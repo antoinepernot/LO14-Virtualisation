@@ -1,14 +1,37 @@
 #!/bin/bash
 
-function help(){
-    echo "+-------------+"
-    echo "| rvsh - Aide |"
-    echo "+-------------+----------+--------------------------------------------------------------------------------+"
-    echo "| Option                 | Description                                                                    |"
-    echo "+------------------------+--------------------------------------------------------------------------------+"
-    echo "| -connect <HOST> <USER> | Se connecter à la machine HOST avec l'utilisateur USER.                        |"
-    echo "| -admin                 | Gestion des machines connectées au réseau virtuel et la liste des utilisateurs |"
-    echo "+-------------+----------+--------------------------------------------------------------------------------+"
+function help {
+    whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Aide pour la commande rvsh\n\n–connect <HOST> <USER> : Se connecter à la machine HOST avec l'utilisateur USER.\n–admin                 : Gestion des machines connectées au réseau virtuel et la liste des utilisateurs." 11 84 3>&1 1>&2 2>&3
 }
+
+function admin {
+    echo -n "rvsh > "
+    read cmd
+    case "$cmd" in
+	host ) create_host;;
+    esac
+}
+
+function create_database {
+    sqlite3 database.db "CREATE TABLE users (login TEXT PRIMARY KEY,nom TEXT,prenom TEXT,passwd TEXT);"
+    sqlite3 database.db "CREATE TABLE hosts (hostname TEXT PRIMARY KEY);"
+    sqlite3 database.db "CREATE TABLE grants (id INT PRIMARY KEY,login TEXT,hostname TEXT,adminallowed BOOLEAN,FOREIGN KEY(login) REFERENCES users(login),FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
+}
+
+function create_host {
+    hostname=$(whiptail --inputbox "Entrez le nom de la machine (hostname) : " 8 78 --title "rvsh - Créer une machine virtuelle" 3>&1 1>&2 2>&3)
+    sqlite3 database.db "INSERT INTO hosts (hostname) VALUES ('${hostname}');"
+}
+
+function connect {
+    echo "Hello"
+}
+
+if [ ! -f 'database.db' ]
+then
+    create_database
+fi
+
+create_host
 
 exit 0
