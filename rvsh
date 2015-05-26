@@ -1,0 +1,14 @@
+#!/bin/bash
+
+function help(){
+    echo "+-------------+"
+    echo "| rvsh - Aide |"
+    echo "+-------------+----------+--------------------------------------------------------------------------------+"
+    echo "| Option                 | Description                                                                    |"
+    echo "+------------------------+--------------------------------------------------------------------------------+"
+    echo "| -connect <HOST> <USER> | Se connecter à la machine HOST avec l'utilisateur USER.                        |"
+    echo "| -admin                 | Gestion des machines connectées au réseau virtuel et la liste des utilisateurs |"
+    echo "+-------------+----------+--------------------------------------------------------------------------------+"
+}
+
+exit 0
