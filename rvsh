@@ -1,18 +1,73 @@
 #!/bin/bash
+# 
+# The MIT License (MIT)
+# 
+# Copyright (c) 2015 Halouoi Hamza <halouoi.hamza@utt.fr> & Antoine Pernot <antoine.pernot@utt.fr>
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# 
+
+# +------------------------------------------------------+
+# | ATTENTION : Ce script nécessite le programme sqlite3 |
+# +------------------------------------------------------+
+
+function install_sqlite {
+    echo "rvsh dépends de sqlite3. Nous allons l'installer …"
+    sudo apt-get -y install sqlite3
+}
+
+dpkg -s sqlite3 2>/dev/null >/dev/null || install_sqlite
 
 function help {
     whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Aide pour la commande rvsh\n\n–connect <HOST> <USER> : Se connecter à la machine HOST avec l'utilisateur USER.\n–admin                 : Gestion des machines connectées au réseau virtuel et la liste des utilisateurs." 11 84 3>&1 1>&2 2>&3
 }
 
 function admin {
-    echo -n "rvsh > "
-    read cmd
-    case "$cmd" in
-	host ) create_host;;
-    esac
+    cmd=''
+    hist=''
+    while [[ $cmd != 'exit' ]]
+    do
+	echo -n "rvsh > "
+	read cmd
+	if [[ $cmd != '!!' ]]
+	then
+	    hist=${cmd}
+	else
+	    cmd=${hist}
+	    echo $cmd
+	fi
+	com=`echo ${cmd} | cut -d' ' -f1`
+	param=`echo ${cmd} | cut -d' ' -f2-`
+	case "$com" in
+	    "exit"	) echo "Déconnexion";;
+	    "host"	) host $param;;
+	    "users"	) users $param;;
+	esac
+    done
+}
+
+function admin_help {
+    whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Commandes disponibles au mode admin\n\nhost    : Gestion des postes du réseau. \nusers   : Gestion des utilisateurs du réseau. \nafinger : Renseigne les informations complémentaires sur l'utilisateur. \n\n-h      : Afficher l'aide de la commande" 11 84 3>&1 1>&2 2>&3
 }
 
 function create_database {
+    echo "Base de données abscente, création de la base 'database.db'. " >&2
     sqlite3 database.db "CREATE TABLE users (login TEXT PRIMARY KEY,nom TEXT,prenom TEXT,passwd TEXT);"
     sqlite3 database.db "CREATE TABLE hosts (hostname TEXT PRIMARY KEY);"
     sqlite3 database.db "CREATE TABLE grants (id INT PRIMARY KEY,login TEXT,hostname TEXT,adminallowed BOOLEAN,FOREIGN KEY(login) REFERENCES users(login),FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
@@ -24,7 +79,27 @@ function create_host {
     do
 	hostname=$(whiptail --inputbox "Entrez le nom de la machine (hostname) : " 8 78 --title "rvsh - Créer une machine virtuelle" 3>&1 1>&2 2>&3)
     done
-    #sqlite3 database.db "INSERT INTO hosts (hostname) VALUES ('${hostname}');"
+    sqlite3 database.db "INSERT INTO hosts (hostname) VALUES ('${hostname}');"
+}
+
+function delete_host {
+    nbhosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;" | wc -l)
+    hosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;" | sed -e 's/\(.*\)$/\1 \1 OFF/g')
+    host=$(whiptail --title "rvsh - Suppession de machines virtuelles" --checklist "Choisissez les postes à supprimer : " 20 78 ${nbhosts} ${hosts} 3>&1 1>&2 2>&3)
+    for el in ${host}
+    do
+	echo "Suppession du poste ${el}. "
+	sqlite3 database.db "DELETE FROM hosts WHERE hostname = ${el};"
+	sqlite3 database.db "DELETE FROM grants WHERE hostname = ${el};"
+    done
+}
+
+function list_host {
+    sqlite3 database.db "SELECT hostname FROM hosts;"
+}
+
+function help_host {
+    whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Aide pour la commande host\n\n–add    | –a : Ajoute une machine au réseau. \n–remove | –r : Supprime une machine du réseau. \n–list   | –l : Liste les machines du réseau. " 11 84 3>&1 1>&2 2>&3
 }
 
 function create_user {
@@ -55,7 +130,45 @@ function create_user {
     sqlite3 database.db "INSERT INTO users (login, nom, prenom, passwd) VALUES ('${login}','${nom}','${prenom}','${hash}');"
 }
 
+function delete_user {
+    nbhosts=$(sqlite3 -column database.db "SELECT login FROM users;" | wc -l)
+    hosts=$(sqlite3 -column database.db "SELECT login FROM users;" | sed -e 's/\(.*\)$/\1 \1 OFF/g')
+    host=$(whiptail --title "rvsh - Suppession d'utilisateurs" --checklist "Choisissez les comptes utilisateurs à supprimer : " 20 78 ${nbhosts} ${hosts} 3>&1 1>&2 2>&3)
+    for el in ${host}
+    do
+	echo "Suppession de l'utilisateur ${el}. "
+	sqlite3 database.db "DELETE FROM users WHERE login = ${el};"
+	sqlite3 database.db "DELETE FROM grants WHERE login = ${el};"
+    done
+}
+
+function help_user {
+    whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Aide pour la commande users\n\n–add    | –a : Ajoute un utilisateur. \n–remove | –r : Supprime un utilisateur. \n–list   | –l : Liste les utiliateurs. " 11 84 3>&1 1>&2 2>&3
+}
+
 function connect {
+    echo "Hello"
+}
+
+function host {
+    case "$1" in
+	"-add"		| "-a"	) create_host;;
+	"-remove"	| "-r"	) delete_host;;
+	"-list"		| "-l"	) list_host;;
+	*			) help_host;;
+    esac
+}
+
+function users {
+    case "$1" in
+	"-add" 		| "-a"	) create_user;;
+	"-remove" 	| "-r"	) delete_user;;
+	"-list"		| "-l"	) list_user;;
+	*			) help_user;;
+    esac
+}
+
+function afinger {
     echo "Hello"
 }
 
@@ -64,6 +177,10 @@ then
     create_database
 fi
 
-create_user
+case "$1" in
+    "-connect"	) connect;;
+    "-admin"	) admin;;
+    *		) help;;
+esac
 
 exit 0
