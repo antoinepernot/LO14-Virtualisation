@@ -58,6 +58,7 @@ function admin {
 	    "exit"	) echo "Déconnexion";;
 	    "host"	) host $param;;
 	    "users"	) users $param;;
+	    "afinger"	) afinger $param;;
 	esac
     done
 }
@@ -68,7 +69,7 @@ function admin_help {
 
 function create_database {
     echo "Base de données abscente, création de la base 'database.db'. " >&2
-    sqlite3 database.db "CREATE TABLE users (login TEXT PRIMARY KEY,nom TEXT,prenom TEXT,passwd TEXT);"
+    sqlite3 database.db "CREATE TABLE users (login TEXT PRIMARY KEY,nom TEXT,prenom TEXT,passwd TEXT,courriel TEXT,telephone CHAR(10));"
     sqlite3 database.db "CREATE TABLE hosts (hostname TEXT PRIMARY KEY);"
     sqlite3 database.db "CREATE TABLE grants (id INT PRIMARY KEY,login TEXT,hostname TEXT,adminallowed BOOLEAN,FOREIGN KEY(login) REFERENCES users(login),FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
 }
@@ -142,6 +143,10 @@ function delete_user {
     done
 }
 
+function list_user {
+    sqlite3 database.db "SELECT login,nom,prenom FROM users;"
+}
+
 function help_user {
     whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Aide pour la commande users\n\n–add    | –a : Ajoute un utilisateur. \n–remove | –r : Supprime un utilisateur. \n–list   | –l : Liste les utiliateurs. " 11 84 3>&1 1>&2 2>&3
 }
@@ -169,7 +174,9 @@ function users {
 }
 
 function afinger {
-    echo "Hello"
+    nbusers=$(sqlite3 -column database.db "SELECT login FROM users;" | wc -l)
+    users=$(sqlite3 -column database.db "SELECT login FROM users;" | sed -e 's/\(.*\)$/\1 \1 /g')
+    user=$(whiptail --title "rvsh - Modification d'utilisateurs" --menu "Choisissez les comptes utilisateurs à modifier : " 20 78 ${nbusers} ${users} 3>&1 1>&2 2>&3)
 }
 
 if [ ! -f 'database.db' ]
