@@ -19,8 +19,40 @@ function create_database {
 }
 
 function create_host {
-    hostname=$(whiptail --inputbox "Entrez le nom de la machine (hostname) : " 8 78 --title "rvsh - Créer une machine virtuelle" 3>&1 1>&2 2>&3)
-    sqlite3 database.db "INSERT INTO hosts (hostname) VALUES ('${hostname}');"
+    hostname=''
+    while [[ $hostname = '' ]]
+    do
+	hostname=$(whiptail --inputbox "Entrez le nom de la machine (hostname) : " 8 78 --title "rvsh - Créer une machine virtuelle" 3>&1 1>&2 2>&3)
+    done
+    #sqlite3 database.db "INSERT INTO hosts (hostname) VALUES ('${hostname}');"
+}
+
+function create_user {
+    nom=$(whiptail --inputbox "Entrez le nom de l'utilisateur : " 8 78 --title "rvsh - Créer un compte utilisateur" 3>&1 1>&2 2>&3)
+    prenom=$(whiptail --inputbox "Entrez le prénom de l'utilisateur : " 8 78 --title "rvsh - Créer un compte utilisateur" 3>&1 1>&2 2>&3)
+    login=''
+    while [[ $login = '' ]]
+    do
+	login=$(echo "`echo -n "${nom}" | tr 'A-Z' 'a-z' | cut -c 1-8``echo -n "${prenom}" | tr 'A-Z' 'a-z' | cut -c 1-2`")
+	login=$(whiptail --inputbox "Entrez l'identifiant de l'utilisateur (login) : " 8 78 ${login} --title "rvsh - Créer un compte utilisateur" 3>&1 1>&2 2>&3)
+    done
+    passwd1='a'
+    passwd1='b'
+    while [[ $passwd1 != $passwd2 ]]
+    do
+	passwd1=''
+	while [[ $passwd1 = '' ]]
+	do
+	    passwd1=$(whiptail --passwordbox "Entrez le mot de passe (passwd) : " 8 78 --title "rvsh - Créer un compte utilisateur" 3>&1 1>&2 2>&3)
+	done
+	passwd2=''
+	while [[ $passwd2 = '' ]]
+	do
+	    passwd2=$(whiptail --passwordbox "Confirmez le mot de passe (passwd) : " 8 78 --title "rvsh - Créer un compte utilisateur" 3>&1 1>&2 2>&3)
+	done
+    done
+    hash=$(echo -n ${passwd1} | sha512sum | awk '{ print $1 }')
+    sqlite3 database.db "INSERT INTO users (login, nom, prenom, passwd) VALUES ('${login}','${nom}','${prenom}','${hash}');"
 }
 
 function connect {
@@ -32,6 +64,6 @@ then
     create_database
 fi
 
-create_host
+create_user
 
 exit 0
