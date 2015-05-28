@@ -99,6 +99,8 @@ function create_database {
     sqlite3 database.db "CREATE TABLE hosts (hostname TEXT PRIMARY KEY);"
     sqlite3 database.db "CREATE TABLE grants (login TEXT, hostname TEXT, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
     sqlite3 database.db "CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT);"
+    sqlite3 database.db "CREATE TABLE authlog (login TEXT, hostname TEXT, login_timestamp INTEGER, logout_timestamp INTEGER, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
+    sqlite3 database.db "CREATE TABLE syslog (id INTEGER, host TEXT, priority INTEGER, level INTEGER, datetime INTEGER, program TEXT, msg TEXT, FOREIGN KEY(host) REFERENCES hosts(hostname));"
     
     # Définition du mot de passe d'administration. Ici, le mot de passe par défaut est 'AdaLovelace'. 
     sqlite3 database.db "INSERT INTO config (key, value) VALUES ('admin_passwd','c6fad173ccc1d73c9b416a51295e1cc322fbc4141d5f5658e1148e6be18b53d1b434420ba2df7980aa3bf37c7b2339f46af07e30ad814c282c617175f5b98abd');"
