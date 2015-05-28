@@ -106,6 +106,8 @@ function create_database {
     sqlite3 database.db "INSERT INTO config (key, value) VALUES ('admin_passwd','c6fad173ccc1d73c9b416a51295e1cc322fbc4141d5f5658e1148e6be18b53d1b434420ba2df7980aa3bf37c7b2339f46af07e30ad814c282c617175f5b98abd');"
 }
 
+#*********************************************
+
 function create_host {
     hostname=''
     while [[ $hostname = '' ]]
@@ -114,6 +116,8 @@ function create_host {
     done
     sqlite3 database.db "INSERT INTO hosts (hostname) VALUES ('${hostname}');"
 }
+
+#***********************************************
 
 function delete_host {
     nbhosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;" | wc -l)
@@ -185,6 +189,7 @@ function delete_user {
     fi
 }
 
+
 function list_user {
     sqlite3 database.db "SELECT login,nom,prenom FROM users;"
 }
@@ -252,8 +257,8 @@ function admin_passwd {
 }
 
 function connect {
-    user=$1
-    host=$2
+    host=$1
+    user=$2
     if [[ $(sqlite3 -column database.db "SELECT * FROM grants WHERE login = '${user}' AND hostname = '${host}';") ]]
     then
 	passwd=$(whiptail --passwordbox "Entrez le mot de passe de connexion : " 8 78 --title "rvsh - Connexion au réseau" 3>&1 1>&2 2>&3)
@@ -277,8 +282,12 @@ function connect {
 		com=`echo ${cmd} | cut -d' ' -f1`
 		param=`echo ${cmd} | cut -d' ' -f2-`
 		case "$com" in
-		    "exit"	) echo "Déconnexion";;
-		    *		) echo "Commande inconnue. " >&2
+		    "exit"		) echo "Déconnexion";;
+		    "rhost"		) rhost;;
+		    "passwd"	) users_passwd;;
+		    "connect"	) shell_connect $param;;
+		    "su"		) shell_connect $host $param;;
+		    *			) echo "Commande inconnue. " >&2;;
 		esac
 	    done
 	else
@@ -286,6 +295,58 @@ function connect {
 	fi
     else
 	echo "Connexion refusée : permission non accordée. " >&2
+    fi
+}
+
+function shell_connect {
+	old_user=$user
+	old_host=$host
+	
+	if [[ $1 != '' ]]
+	then
+		host=$1
+		if [[ $2 != '' ]]
+		then
+			user=$2
+			connect $host $user
+		else
+			echo "Utilisateur invalide " >&2
+		fi
+	else
+		echo "Poste invalide " >&2
+	fi
+	
+	user=$old_user
+	host=$old_host
+	
+	connect $host $user
+}
+
+function rhost {
+	sqlite3 database.db " SELECT hostname FROM hosts; "
+}
+
+function users_passwd {
+	passwd=$(whiptail --passwordbox "Entrez le mot de passe actuel : " 8 78 --title "rvsh - Modification du mot de passe" 3>&1 1>&2 2>&3)
+    hash=$(echo -n $passwd | sha512sum | awk '{ print $1 }')
+    ctrl=$(sqlite3 database.db "SELECT passwd FROM users WHERE login='${user}';")
+    if [[ $hash = $ctrl ]]
+    then
+	passwd1=''
+	while [[ $passwd1 = '' ]]
+	do
+	    passwd1=$(whiptail --passwordbox "Entrez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe " 3>&1 1>&2 2>&3)
+	done
+	passwd2=''
+	while [[ $passwd2 = '' ]]
+	do
+	    passwd2=$(whiptail --passwordbox "Confirmez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe " 3>&1 1>&2 2>&3)
+	done
+	hash=$(echo -n ${passwd1} | sha512sum | awk '{ print $1 }')
+	sqlite3 database.db "UPDATE users SET passwd='${hash} WHERE login=${user}';"
+	echo "Mot de passe modifié avec succès. "
+    else
+	echo "Mot de passe incorrect. " >&2
     fi
 }
 
@@ -307,6 +368,8 @@ function users {
 	*			) help_user;;
     esac
 }
+
+
 
 function afinger {
     nbusers=$(sqlite3 -column database.db "SELECT login FROM users;" | wc -l)
