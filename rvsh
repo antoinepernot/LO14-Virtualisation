@@ -2,7 +2,7 @@
 # 
 # The MIT License (MIT)
 # 
-# Copyright (c) 2015 Halouoi Hamza <halouoi.hamza@utt.fr> & Antoine Pernot <antoine.pernot@utt.fr>
+# Copyright (c) 2015 Halouoi Hamza <halouoi.hamza@utt.fr>, Antoine Pernot <antoine.pernot@utt.fr>
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -27,12 +27,27 @@
 # | ATTENTION : Ce script nécessite le programme sqlite3 |
 # +------------------------------------------------------+
 
+# La section ci-dessous pourra être supprimée si le présent programme est distribué sous la forme d'un paquet Debian avec comme fichier DEBIAN/control : 
+# 
+# ----- DEBUT DE FICHIER DEBIAN/control -----
+# Package: rvsh
+# Version: 1.0
+# Section: system
+# Priority: optional
+# Architecture: all
+# Depends: sqlite3
+# Maintainer: Halouoi Hamza <halouoi.hamza@utt.fr>, Antoine Pernot <antoine.pernot@utt.fr>
+# Description: Shell de réseau virtuel
+# -----  FIN DE FICHIER DEBIAN/control  -----
+
+# ----- DEBUT DE SECTION -----
 function install_sqlite {
     echo "rvsh dépends de sqlite3. Nous allons l'installer …"
     sudo apt-get -y install sqlite3
 }
 
 dpkg -s sqlite3 2>/dev/null >/dev/null || install_sqlite
+# -----  FIN DE SECTION  -----
 
 function help {
     whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Aide pour la commande rvsh\n\n–connect <HOST> <USER> : Se connecter à la machine HOST avec l'utilisateur USER.\n–admin                 : Gestion des machines connectées au réseau virtuel et la liste des utilisateurs." 11 84 3>&1 1>&2 2>&3
@@ -101,13 +116,18 @@ function create_host {
 function delete_host {
     nbhosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;" | wc -l)
     hosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;" | sed -e 's/\(.*\)$/\1 \1 OFF/g')
-    host=$(whiptail --title "rvsh - Suppession de machines virtuelles" --checklist "Choisissez les postes à supprimer : " 20 78 ${nbhosts} ${hosts} 3>&1 1>&2 2>&3)
-    for el in ${host}
-    do
-	echo "Suppession du poste ${el}. "
-	sqlite3 database.db "DELETE FROM hosts WHERE hostname = ${el};"
-	sqlite3 database.db "DELETE FROM grants WHERE hostname = ${el};"
-    done
+    if [[ $nbhosts -gt 0 ]]
+    then
+	host=$(whiptail --title "rvsh - Suppession de machines virtuelles" --checklist "Choisissez les postes à supprimer : " 20 78 ${nbhosts} ${hosts} 3>&1 1>&2 2>&3)
+	for el in ${host}
+	do
+	    echo "Suppession du poste ${el}. "
+	    sqlite3 database.db "DELETE FROM hosts WHERE hostname = ${el};"
+	    sqlite3 database.db "DELETE FROM grants WHERE hostname = ${el};"
+	done
+    else
+	echo "Aucun poste enregistré sur le réseau. " >&2
+    fi
 }
 
 function list_host {
@@ -149,13 +169,18 @@ function create_user {
 function delete_user {
     nbuser=$(sqlite3 -column database.db "SELECT login FROM users;" | wc -l)
     users=$(sqlite3 -column database.db "SELECT login FROM users;" | sed -e 's/\(.*\)$/\1 \1 OFF/g')
-    user=$(whiptail --title "rvsh - Suppession d'utilisateurs" --checklist "Choisissez les comptes utilisateurs à supprimer : " 20 78 ${nbuser} ${users} 3>&1 1>&2 2>&3)
-    for el in ${user}
-    do
-	echo "Suppession de l'utilisateur ${el}. "
-	sqlite3 database.db "DELETE FROM users WHERE login = ${el};"
-	sqlite3 database.db "DELETE FROM grants WHERE login = ${el};"
-    done
+    if [[ $nbuser -gt 0 ]]
+    then
+	user=$(whiptail --title "rvsh - Suppession d'utilisateurs" --checklist "Choisissez les comptes utilisateurs à supprimer : " 20 78 ${nbuser} ${users} 3>&1 1>&2 2>&3)
+	for el in ${user}
+	do
+	    echo "Suppession de l'utilisateur ${el}. "
+	    sqlite3 database.db "DELETE FROM users WHERE login = ${el};"
+	    sqlite3 database.db "DELETE FROM grants WHERE login = ${el};"
+	done
+    else
+	echo "Aucun utilisateur enregistré sur le réseau. " >&2
+    fi
 }
 
 function list_user {
@@ -165,25 +190,35 @@ function list_user {
 function grant_user {
     nbuser=$(sqlite3 -column database.db "SELECT login FROM users;" | wc -l)
     users=$(sqlite3 -column database.db "SELECT login FROM users;" | sed -e 's/\(.*\)$/\1 \1/g')
-    user=$(whiptail --title "rvsh - Gestion des droits d'accès" --menu "Choisissez le compte utilisateur à gérer : " 20 78 ${nbuser} ${users} 3>&1 1>&2 2>&3)
-    nbhosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;" | wc -l)
-    hosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;")
-    listhost=''
-    for el in ${hosts}
-    do
-	if [[ $(sqlite3 -column database.db "SELECT * FROM grants WHERE login = '${user}' AND hostname = '${el}';") ]]
+    if [[ $nbuser -gt 0 ]]
+    then
+	user=$(whiptail --title "rvsh - Gestion des droits d'accès" --menu "Choisissez le compte utilisateur à gérer : " 20 78 ${nbuser} ${users} 3>&1 1>&2 2>&3)
+	nbhosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;" | wc -l)
+	hosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;")
+	if [[ $nbhosts -gt 0 ]]
 	then
-	    listhost="$listhost $el $el OFF"
+	    listhost=''
+	    for el in ${hosts}
+	    do
+		if [[ $(sqlite3 -column database.db "SELECT * FROM grants WHERE login = '${user}' AND hostname = '${el}';") ]]
+		then
+		    listhost="$listhost $el $el ON"
+		else
+		    listhost="$listhost $el $el OFF"
+		fi
+	    done
+	    host=$(whiptail --title "rvsh - Gestion des droits d'accès" --checklist "Choisissez les postes autorisés pour l'utilisateur ${user} : " 20 78 ${nbhosts} ${listhost} 3>&1 1>&2 2>&3)
+	    sqlite3 database.db "DELETE FROM grants WHERE login = '${user}';"
+	    for el in ${host}
+	    do
+		sqlite3 database.db "INSERT INTO grants (login,hostname) VALUES ('${user}',${el});"
+	    done
 	else
-	    listhost="$listhost $el $el ON"
+	    echo "Aucun poste enregistré sur le réseau. " >&2
 	fi
-    done
-    host=$(whiptail --title "rvsh - Gestion des droits d'accès" --checklist "Choisissez les postes autorisés pour l'utilisateur ${user} : " 20 78 ${nbhosts} ${listhost} 3>&1 1>&2 2>&3)
-    sqlite3 database.db "DELETE FROM grants WHERE login = '${user}';"
-    for el in ${host}
-    do
-	sqlite3 database.db "INSERT INTO grants (login,hostname) VALUES ('${user}',${el});"
-    done
+    else
+	echo "Aucun utilisateur enregistré sur le réseau. " >&2
+    fi
 }
 
 function help_user {
@@ -215,7 +250,41 @@ function admin_passwd {
 }
 
 function connect {
-    echo "Hello"
+    user=$1
+    host=$2
+    if [[ $(sqlite3 -column database.db "SELECT * FROM grants WHERE login = '${user}' AND hostname = '${host}';") ]]
+    then
+	passwd=$(whiptail --passwordbox "Entrez le mot de passe de connexion : " 8 78 --title "rvsh - Connexion au réseau" 3>&1 1>&2 2>&3)
+	hash=$(echo -n $passwd | sha512sum | awk '{ print $1 }')
+	ctrl=$(sqlite3 database.db "SELECT passwd FROM users WHERE login = '${user}';")
+	if [[ $hash = $ctrl ]]
+	then
+	    cmd=''
+	    hist=''
+	    while [[ $cmd != 'exit' ]]
+	    do
+		echo -n "${user}@${host} > "
+		read cmd
+		if [[ $cmd != '!!' ]]
+		then
+		    hist=${cmd}
+		else
+		    cmd=${hist}
+		    echo $cmd
+		fi
+		com=`echo ${cmd} | cut -d' ' -f1`
+		param=`echo ${cmd} | cut -d' ' -f2-`
+		case "$com" in
+		    "exit"	) echo "Déconnexion";;
+		    *		) echo "Commande inconnue. " >&2
+		esac
+	    done
+	else
+	    echo "Connexion refusée : mot de passe incorrect. " >&2
+	fi
+    else
+	echo "Connexion refusée : permission non accordée. " >&2
+    fi
 }
 
 function host {
@@ -260,7 +329,7 @@ then
 fi
 
 case "$1" in
-    "-connect"	) connect;;
+    "-connect"	) connect $2 $3;;
     "-admin"	) admin;;
     *		) help;;
 esac
