@@ -60,7 +60,18 @@ declare -a host_stack
 declare -a logintime_stack
 
 function error_log {
-    echo "Hello"
+    level=$1
+    datetime=$(date +%s)
+    program=$2
+    msg=$3
+    sqlite3 ${databasefile} "INSERT INTO syslog (host,level,datetime,program,msg) VALUES ('${host}','${level}','${datetime}','${program}','${msg}');"
+    
+    if [[ ${level} -le 4 ]]
+    then
+	echo ${msg} >&2
+    else
+	echo ${msg}
+    fi
 }
 
 function admin {
@@ -99,7 +110,7 @@ function admin {
 	    esac
 	done
     else
-	echo "Mot de passe incorrect. " >&2
+	error_log 3 'admin-connect' "Mot de passe incorrect. "
     fi
 }
 
@@ -114,7 +125,7 @@ function create_database {
     sqlite3 ${databasefile} "CREATE TABLE grants (login TEXT, hostname TEXT, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
     sqlite3 ${databasefile} "CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT);"
     sqlite3 ${databasefile} "CREATE TABLE authlog (id INTEGER PRIMARY KEY AUTOINCREMENT, login TEXT, hostname TEXT, login_timestamp INTEGER, logout_timestamp INTEGER, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
-    sqlite3 ${databasefile} "CREATE TABLE syslog (id INTEGER PRIMARY KEY AUTOINCREMENT, host TEXT, priority INTEGER, level INTEGER, datetime INTEGER, program TEXT, msg TEXT, FOREIGN KEY(host) REFERENCES hosts(hostname));"
+    sqlite3 ${databasefile} "CREATE TABLE syslog (id INTEGER PRIMARY KEY AUTOINCREMENT, host TEXT, level INTEGER, datetime INTEGER, program TEXT, msg TEXT, FOREIGN KEY(host) REFERENCES hosts(hostname));"
     
     # Définition du mot de passe d'administration. Ici, le mot de passe par défaut est 'AdaLovelace'. 
     sqlite3 ${databasefile} "INSERT INTO config (key, value) VALUES ('admin_passwd','c6fad173ccc1d73c9b416a51295e1cc322fbc4141d5f5658e1148e6be18b53d1b434420ba2df7980aa3bf37c7b2339f46af07e30ad814c282c617175f5b98abd');"
@@ -260,9 +271,9 @@ function admin_passwd {
 	done
 	hash=$(echo -n ${passwd1} | sha512sum | awk '{ print $1 }')
 	sqlite3 ${databasefile} "UPDATE config SET value='${hash}' WHERE key = 'admin_passwd';"
-	echo "Mot de passe modifié avec succès. "
+	error_log 5 'admin-passwd' "Mot de passe modifié avec succès. "
     else
-	echo "Mot de passe incorrect. " >&2
+	error_log 3 'admin-passwd' "Mot de passe incorrect. "
     fi
 }
 
@@ -335,10 +346,10 @@ function connect {
 		esac
 	    done
 	else
-	    echo "Connexion refusée : mot de passe incorrect. " >&2
+	    error_log 3 'connect' "${user}@${host} - Connexion refusée : mot de passe incorrect. "
 	fi
     else
-	echo "Connexion refusée : permission non accordée. " >&2
+	error_log 3 'connect' "${user}@${host} - Connexion refusée : permission non accordée. "
     fi
     
     timestamp=$(date +%s)
@@ -378,9 +389,9 @@ function users_passwd {
 	done
 	hash=$(echo -n ${passwd1} | sha512sum | awk '{ print $1 }')
 	sqlite3 ${databasefile} "UPDATE users SET passwd='${hash} WHERE login=${user}';"
-	echo "Mot de passe modifié avec succès. "
+	error_log 5 'passwd' "${user} - Mot de passe modifié avec succès. "
     else
-	echo "Mot de passe incorrect. " >&2
+	error_log 3 'passwd' "${user} - Mot de passe incorrect. "
     fi
 }
 
