@@ -53,10 +53,19 @@ function help {
     whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Aide pour la commande rvsh\n\n–connect <HOST> <USER> : Se connecter à la machine HOST avec l'utilisateur USER.\n–admin                 : Gestion des machines connectées au réseau virtuel et la liste des utilisateurs." 11 84 3>&1 1>&2 2>&3
 }
 
+databasefile='database.db'
+
+declare -a user_stack
+declare -a host_stack
+
+function error_log {
+    echo "Hello"
+}
+
 function admin {
     passwd=$(whiptail --passwordbox "Entrez le mot de passe de connexion : " 8 78 --title "rvsh - Connexion au mode administrateur" 3>&1 1>&2 2>&3)
     hash=$(echo -n $passwd | sha512sum | awk '{ print $1 }')
-    ctrl=$(sqlite3 database.db "SELECT value FROM config WHERE key = 'admin_passwd';")
+    ctrl=$(sqlite3 ${databasefile} "SELECT value FROM config WHERE key = 'admin_passwd';")
     if [[ $hash = $ctrl ]]
     then
 	cmd=''
@@ -94,19 +103,17 @@ function admin_help {
 }
 
 function create_database {
-    echo "Base de données abscente, création de la base 'database.db'. " >&2
-    sqlite3 database.db "CREATE TABLE users (login TEXT PRIMARY KEY, nom TEXT, prenom TEXT, passwd TEXT, courriel TEXT, telephone CHAR(10));"
-    sqlite3 database.db "CREATE TABLE hosts (hostname TEXT PRIMARY KEY);"
-    sqlite3 database.db "CREATE TABLE grants (login TEXT, hostname TEXT, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
-    sqlite3 database.db "CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT);"
-    sqlite3 database.db "CREATE TABLE authlog (login TEXT, hostname TEXT, login_timestamp INTEGER, logout_timestamp INTEGER, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
-    sqlite3 database.db "CREATE TABLE syslog (id INTEGER, host TEXT, priority INTEGER, level INTEGER, datetime INTEGER, program TEXT, msg TEXT, FOREIGN KEY(host) REFERENCES hosts(hostname));"
+    echo "Base de données abscente, création de la base '${databasefile}'. " >&2
+    sqlite3 ${databasefile} "CREATE TABLE users (login TEXT PRIMARY KEY, nom TEXT, prenom TEXT, passwd TEXT, courriel TEXT, telephone CHAR(10));"
+    sqlite3 ${databasefile} "CREATE TABLE hosts (hostname TEXT PRIMARY KEY);"
+    sqlite3 ${databasefile} "CREATE TABLE grants (login TEXT, hostname TEXT, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
+    sqlite3 ${databasefile} "CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT);"
+    sqlite3 ${databasefile} "CREATE TABLE authlog (id INTEGER PRIMARY KEY AUTOINCREMENT, login TEXT, hostname TEXT, login_timestamp INTEGER, logout_timestamp INTEGER, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
+    sqlite3 ${databasefile} "CREATE TABLE syslog (id INTEGER PRIMARY KEY AUTOINCREMENT, host TEXT, priority INTEGER, level INTEGER, datetime INTEGER, program TEXT, msg TEXT, FOREIGN KEY(host) REFERENCES hosts(hostname));"
     
     # Définition du mot de passe d'administration. Ici, le mot de passe par défaut est 'AdaLovelace'. 
-    sqlite3 database.db "INSERT INTO config (key, value) VALUES ('admin_passwd','c6fad173ccc1d73c9b416a51295e1cc322fbc4141d5f5658e1148e6be18b53d1b434420ba2df7980aa3bf37c7b2339f46af07e30ad814c282c617175f5b98abd');"
+    sqlite3 ${databasefile} "INSERT INTO config (key, value) VALUES ('admin_passwd','c6fad173ccc1d73c9b416a51295e1cc322fbc4141d5f5658e1148e6be18b53d1b434420ba2df7980aa3bf37c7b2339f46af07e30ad814c282c617175f5b98abd');"
 }
-
-#*********************************************
 
 function create_host {
     hostname=''
@@ -114,22 +121,20 @@ function create_host {
     do
 	hostname=$(whiptail --inputbox "Entrez le nom de la machine (hostname) : " 8 78 --title "rvsh - Créer une machine virtuelle" 3>&1 1>&2 2>&3)
     done
-    sqlite3 database.db "INSERT INTO hosts (hostname) VALUES ('${hostname}');"
+    sqlite3 ${databasefile} "INSERT INTO hosts (hostname) VALUES ('${hostname}');"
 }
 
-#***********************************************
-
 function delete_host {
-    nbhosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;" | wc -l)
-    hosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;" | sed -e 's/\(.*\)$/\1 \1 OFF/g')
+    nbhosts=$(sqlite3 -column ${databasefile} "SELECT hostname FROM hosts;" | wc -l)
+    hosts=$(sqlite3 -column ${databasefile} "SELECT hostname FROM hosts;" | sed -e 's/\(.*\)$/\1 \1 OFF/g')
     if [[ $nbhosts -gt 0 ]]
     then
 	host=$(whiptail --title "rvsh - Suppession de machines virtuelles" --checklist "Choisissez les postes à supprimer : " 20 78 ${nbhosts} ${hosts} 3>&1 1>&2 2>&3)
 	for el in ${host}
 	do
 	    echo "Suppession du poste ${el}. "
-	    sqlite3 database.db "DELETE FROM hosts WHERE hostname = ${el};"
-	    sqlite3 database.db "DELETE FROM grants WHERE hostname = ${el};"
+	    sqlite3 ${databasefile} "DELETE FROM hosts WHERE hostname = ${el};"
+	    sqlite3 ${databasefile} "DELETE FROM grants WHERE hostname = ${el};"
 	done
     else
 	echo "Aucun poste enregistré sur le réseau. " >&2
@@ -137,7 +142,7 @@ function delete_host {
 }
 
 function list_host {
-    sqlite3 database.db "SELECT hostname FROM hosts;"
+    sqlite3 ${databasefile} "SELECT hostname FROM hosts;"
 }
 
 function help_host {
@@ -169,20 +174,20 @@ function create_user {
 	done
     done
     hash=$(echo -n ${passwd1} | sha512sum | awk '{ print $1 }')
-    sqlite3 database.db "INSERT INTO users (login, nom, prenom, passwd) VALUES ('${login}','${nom}','${prenom}','${hash}');"
+    sqlite3 ${databasefile} "INSERT INTO users (login, nom, prenom, passwd) VALUES ('${login}','${nom}','${prenom}','${hash}');"
 }
 
 function delete_user {
-    nbuser=$(sqlite3 -column database.db "SELECT login FROM users;" | wc -l)
-    users=$(sqlite3 -column database.db "SELECT login FROM users;" | sed -e 's/\(.*\)$/\1 \1 OFF/g')
+    nbuser=$(sqlite3 -column ${databasefile} "SELECT login FROM users;" | wc -l)
+    users=$(sqlite3 -column ${databasefile} "SELECT login FROM users;" | sed -e 's/\(.*\)$/\1 \1 OFF/g')
     if [[ $nbuser -gt 0 ]]
     then
 	user=$(whiptail --title "rvsh - Suppession d'utilisateurs" --checklist "Choisissez les comptes utilisateurs à supprimer : " 20 78 ${nbuser} ${users} 3>&1 1>&2 2>&3)
 	for el in ${user}
 	do
 	    echo "Suppession de l'utilisateur ${el}. "
-	    sqlite3 database.db "DELETE FROM users WHERE login = ${el};"
-	    sqlite3 database.db "DELETE FROM grants WHERE login = ${el};"
+	    sqlite3 ${databasefile} "DELETE FROM users WHERE login = ${el};"
+	    sqlite3 ${databasefile} "DELETE FROM grants WHERE login = ${el};"
 	done
     else
 	echo "Aucun utilisateur enregistré sur le réseau. " >&2
@@ -191,23 +196,23 @@ function delete_user {
 
 
 function list_user {
-    sqlite3 database.db "SELECT login,nom,prenom FROM users;"
+    sqlite3 ${databasefile} "SELECT login,nom,prenom FROM users;"
 }
 
 function grant_user {
-    nbuser=$(sqlite3 -column database.db "SELECT login FROM users;" | wc -l)
-    users=$(sqlite3 -column database.db "SELECT login FROM users;" | sed -e 's/\(.*\)$/\1 \1/g')
+    nbuser=$(sqlite3 -column ${databasefile} "SELECT login FROM users;" | wc -l)
+    users=$(sqlite3 -column ${databasefile} "SELECT login FROM users;" | sed -e 's/\(.*\)$/\1 \1/g')
     if [[ $nbuser -gt 0 ]]
     then
 	user=$(whiptail --title "rvsh - Gestion des droits d'accès" --menu "Choisissez le compte utilisateur à gérer : " 20 78 ${nbuser} ${users} 3>&1 1>&2 2>&3)
-	nbhosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;" | wc -l)
-	hosts=$(sqlite3 -column database.db "SELECT hostname FROM hosts;")
+	nbhosts=$(sqlite3 -column ${databasefile} "SELECT hostname FROM hosts;" | wc -l)
+	hosts=$(sqlite3 -column ${databasefile} "SELECT hostname FROM hosts;")
 	if [[ $nbhosts -gt 0 ]]
 	then
 	    listhost=''
 	    for el in ${hosts}
 	    do
-		if [[ $(sqlite3 -column database.db "SELECT * FROM grants WHERE login = '${user}' AND hostname = '${el}';") ]]
+		if [[ $(sqlite3 -column ${databasefile} "SELECT * FROM grants WHERE login = '${user}' AND hostname = '${el}';") ]]
 		then
 		    listhost="$listhost $el $el ON"
 		else
@@ -215,10 +220,10 @@ function grant_user {
 		fi
 	    done
 	    host=$(whiptail --title "rvsh - Gestion des droits d'accès" --checklist "Choisissez les postes autorisés pour l'utilisateur ${user} : " 20 78 ${nbhosts} ${listhost} 3>&1 1>&2 2>&3)
-	    sqlite3 database.db "DELETE FROM grants WHERE login = '${user}';"
+	    sqlite3 ${databasefile} "DELETE FROM grants WHERE login = '${user}';"
 	    for el in ${host}
 	    do
-		sqlite3 database.db "INSERT INTO grants (login,hostname) VALUES ('${user}',${el});"
+		sqlite3 ${databasefile} "INSERT INTO grants (login,hostname) VALUES ('${user}',${el});"
 	    done
 	else
 	    echo "Aucun poste enregistré sur le réseau. " >&2
@@ -235,7 +240,7 @@ function help_user {
 function admin_passwd {
     passwd=$(whiptail --passwordbox "Entrez le mot de passe actuel : " 8 78 --title "rvsh - Modification du mot de passe administrateur" 3>&1 1>&2 2>&3)
     hash=$(echo -n $passwd | sha512sum | awk '{ print $1 }')
-    ctrl=$(sqlite3 database.db "SELECT value FROM config WHERE key = 'admin_passwd';")
+    ctrl=$(sqlite3 ${databasefile} "SELECT value FROM config WHERE key = 'admin_passwd';")
     if [[ $hash = $ctrl ]]
     then
 	passwd1=''
@@ -249,7 +254,7 @@ function admin_passwd {
 	    passwd2=$(whiptail --passwordbox "Confirmez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe administrateur" 3>&1 1>&2 2>&3)
 	done
 	hash=$(echo -n ${passwd1} | sha512sum | awk '{ print $1 }')
-	sqlite3 database.db "UPDATE config SET value='${hash}' WHERE key = 'admin_passwd';"
+	sqlite3 ${databasefile} "UPDATE config SET value='${hash}' WHERE key = 'admin_passwd';"
 	echo "Mot de passe modifié avec succès. "
     else
 	echo "Mot de passe incorrect. " >&2
@@ -257,13 +262,15 @@ function admin_passwd {
 }
 
 function connect {
+    host_stack=(${host_stack[@]} $1)
+    user_stack=(${user_stack[@]} $2)
     host=$1
     user=$2
-    if [[ $(sqlite3 -column database.db "SELECT * FROM grants WHERE login = '${user}' AND hostname = '${host}';") ]]
+    if [[ $(sqlite3 -column ${databasefile} "SELECT * FROM grants WHERE login = '${user}' AND hostname = '${host}';") ]]
     then
 	passwd=$(whiptail --passwordbox "Entrez le mot de passe de connexion : " 8 78 --title "rvsh - Connexion au réseau" 3>&1 1>&2 2>&3)
 	hash=$(echo -n $passwd | sha512sum | awk '{ print $1 }')
-	ctrl=$(sqlite3 database.db "SELECT passwd FROM users WHERE login = '${user}';")
+	ctrl=$(sqlite3 ${databasefile} "SELECT passwd FROM users WHERE login = '${user}';")
 	if [[ $hash = $ctrl ]]
 	then
 	    cmd=''
@@ -282,12 +289,12 @@ function connect {
 		com=`echo ${cmd} | cut -d' ' -f1`
 		param=`echo ${cmd} | cut -d' ' -f2-`
 		case "$com" in
-		    "exit"		) echo "Déconnexion";;
-		    "rhost"		) rhost;;
+		    "exit"	) echo "Déconnexion";;
+		    "rhost"	) rhost;;
 		    "passwd"	) users_passwd;;
-		    "connect"	) shell_connect $param;;
-		    "su"		) shell_connect $host $param;;
-		    *			) echo "Commande inconnue. " >&2;;
+		    "connect"	) connect $param;;
+		    "su"	) connect $host $param;;
+		    *		) echo "Commande inconnue. " >&2;;
 		esac
 	    done
 	else
@@ -296,40 +303,24 @@ function connect {
     else
 	echo "Connexion refusée : permission non accordée. " >&2
     fi
-}
-
-function shell_connect {
-	old_user=$user
-	old_host=$host
-	
-	if [[ $1 != '' ]]
-	then
-		host=$1
-		if [[ $2 != '' ]]
-		then
-			user=$2
-			connect $host $user
-		else
-			echo "Utilisateur invalide " >&2
-		fi
-	else
-		echo "Poste invalide " >&2
-	fi
-	
-	user=$old_user
-	host=$old_host
-	
-	connect $host $user
+    if [[ ${#host_stack[@]} -gt 1 ]]
+    then
+    cmd=''
+	unset host_stack[${#host_stack[@]}-1]
+	unset user_stack[${#user_stack[@]}-1]
+	host=${host_stack[${#host_stack[@]}-1]}
+	user=${user_stack[${#user_stack[@]}-1]}
+    fi
 }
 
 function rhost {
-	sqlite3 database.db " SELECT hostname FROM hosts; "
+	sqlite3 ${databasefile} "SELECT hostname FROM hosts;"
 }
 
 function users_passwd {
-	passwd=$(whiptail --passwordbox "Entrez le mot de passe actuel : " 8 78 --title "rvsh - Modification du mot de passe" 3>&1 1>&2 2>&3)
+    passwd=$(whiptail --passwordbox "Entrez le mot de passe actuel : " 8 78 --title "rvsh - Modification du mot de passe" 3>&1 1>&2 2>&3)
     hash=$(echo -n $passwd | sha512sum | awk '{ print $1 }')
-    ctrl=$(sqlite3 database.db "SELECT passwd FROM users WHERE login='${user}';")
+    ctrl=$(sqlite3 ${databasefile} "SELECT passwd FROM users WHERE login='${user}';")
     if [[ $hash = $ctrl ]]
     then
 	passwd1=''
@@ -343,7 +334,7 @@ function users_passwd {
 	    passwd2=$(whiptail --passwordbox "Confirmez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe " 3>&1 1>&2 2>&3)
 	done
 	hash=$(echo -n ${passwd1} | sha512sum | awk '{ print $1 }')
-	sqlite3 database.db "UPDATE users SET passwd='${hash} WHERE login=${user}';"
+	sqlite3 ${databasefile} "UPDATE users SET passwd='${hash} WHERE login=${user}';"
 	echo "Mot de passe modifié avec succès. "
     else
 	echo "Mot de passe incorrect. " >&2
@@ -369,13 +360,11 @@ function users {
     esac
 }
 
-
-
 function afinger {
-    nbusers=$(sqlite3 -column database.db "SELECT login FROM users;" | wc -l)
-    users=$(sqlite3 -column database.db "SELECT login FROM users;" | sed -e 's/\(.*\)$/\1 \1 /g')
+    nbusers=$(sqlite3 -column ${databasefile} "SELECT login FROM users;" | wc -l)
+    users=$(sqlite3 -column ${databasefile} "SELECT login FROM users;" | sed -e 's/\(.*\)$/\1 \1 /g')
     user=$(whiptail --title "rvsh - Modification d'utilisateurs" --menu "Choisissez les comptes utilisateurs à modifier : " 20 78 ${nbusers} ${users} 3>&1 1>&2 2>&3)
-    dat=$(sqlite3 -column database.db "SELECT * FROM users WHERE login = '${user}';")
+    dat=$(sqlite3 -column ${databasefile} "SELECT * FROM users WHERE login = '${user}';")
     nom=$(echo $dat | awk '{ print $2 }')
     nom_mod=$(whiptail --inputbox "Entrez le nom de l'utilisateur : " 8 78 $nom --title "rvsh - Modifier un compte utilisateur" 3>&1 1>&2 2>&3)
     prenom=$(echo $dat | awk '{ print $3 }')
@@ -385,10 +374,10 @@ function afinger {
     telephone=$(echo $dat | awk '{ print $5 }')
     telephone_mod=$(whiptail --inputbox "Entrez le numéro de téléphone de l'utilisateur : " 8 78 $telephone --title "rvsh - Modifier un compte utilisateur" 3>&1 1>&2 2>&3)
     echo "Modification de l'utilisateur ${user}. "
-    sqlite3 database.db "UPDATE users SET nom = '${nom_mod}', prenom = '${prenom_mod}', courriel = '${courriel_mod}', telephone = '${telephone_mod}' WHERE login = '${user}';"
+    sqlite3 ${databasefile} "UPDATE users SET nom = '${nom_mod}', prenom = '${prenom_mod}', courriel = '${courriel_mod}', telephone = '${telephone_mod}' WHERE login = '${user}';"
 }
 
-if [ ! -f 'database.db' ]
+if [ ! -f ${databasefile} ]
 then
     create_database
 fi
