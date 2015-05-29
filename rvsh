@@ -58,6 +58,7 @@ databasefile='database.db'
 declare -a user_stack
 declare -a host_stack
 declare -a logintime_stack
+declare -a compid_stack
 
 function error_log {
     level=$1
@@ -126,6 +127,7 @@ function create_database {
     sqlite3 ${databasefile} "CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT);"
     sqlite3 ${databasefile} "CREATE TABLE authlog (id INTEGER PRIMARY KEY AUTOINCREMENT, login TEXT, hostname TEXT, login_timestamp INTEGER, logout_timestamp INTEGER, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
     sqlite3 ${databasefile} "CREATE TABLE syslog (id INTEGER PRIMARY KEY AUTOINCREMENT, host TEXT, level INTEGER, datetime INTEGER, program TEXT, msg TEXT, FOREIGN KEY(host) REFERENCES hosts(hostname));"
+    sqlite3 ${databasefile} "CREATE TABLE activesh (id INTEGER PRIMARY KEY AUTOINCREMENT, pid INTEGER, login TEXT, host TEXT, logintime INTEGER, comport INTEGER, compid INTEGER, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(host) REFERENCES hosts(hostname));"
     
     # Définition du mot de passe d'administration. Ici, le mot de passe par défaut est 'AdaLovelace'. 
     sqlite3 ${databasefile} "INSERT INTO config (key, value) VALUES ('admin_passwd','c6fad173ccc1d73c9b416a51295e1cc322fbc4141d5f5658e1148e6be18b53d1b434420ba2df7980aa3bf37c7b2339f46af07e30ad814c282c617175f5b98abd');"
@@ -310,6 +312,9 @@ function connect {
     logintime_stack=(${logintime_stack[@]} $(date +%s))
     host=$1
     user=$2
+    nc -dkl -p $((10000 + ${#host_stack[@]} + $$)) &
+    sqlite3 ${databasefile} "INSERT INTO activesh (pid,login,host,logintime,compid,comport) VALUES ('$$','${user}','${host}','$(date +%s)','$!','$((10000 + ${#host_stack[@]} + $$))');"
+    compid_stack=(${compid_stack[@]} $!)
     if [[ $(sqlite3 -column ${databasefile} "SELECT * FROM grants WHERE login = '${user}' AND hostname = '${host}';") ]]
     then
 	passwd=$(whiptail --passwordbox "Entrez le mot de passe de connexion : " 8 78 --title "rvsh - Connexion au réseau" 3>&1 1>&2 2>&3)
@@ -342,6 +347,7 @@ function connect {
 		    "connect"	) connect $param;;
 		    "su"	) connect $host $param;;
 		    "who"	) who;;
+		    "write"	) write $param;;
 		    *		) echo "Commande inconnue. " >&2;;
 		esac
 	    done
@@ -355,6 +361,13 @@ function connect {
     timestamp=$(date +%s)
     login_timestamp=${logintime_stack[${#logintime_stack[@]}-1]}
     sqlite3 ${databasefile} "UPDATE authlog SET logout_timestamp='${timestamp}' WHERE login_timestamp='${login_timestamp}' AND login='${user}' AND hostname='${host}';"
+    
+    kill -9 ${compid_stack[${#compid_stack[@]}-1]}
+    wait ${compid_stack[${#compid_stack[@]}-1]} 2>/dev/null
+    unset compid_stack[${#compid_stack[@]}-1]
+    
+    activeshid=$(sqlite3 ${databasefile} "SELECT id FROM activesh WHERE login='${user}' AND host='${host}' AND pid='$$' ORDER BY id DESC LIMIT 1;")
+    sqlite3 ${databasefile} "DELETE FROM activesh WHERE id='${activeshid}';"
     
     if [[ ${#host_stack[@]} -gt 1 ]]
     then
@@ -429,6 +442,16 @@ function afinger {
     telephone_mod=$(whiptail --inputbox "Entrez le numéro de téléphone de l'utilisateur : " 8 78 $telephone --title "rvsh - Modifier un compte utilisateur" 3>&1 1>&2 2>&3)
     echo "Modification de l'utilisateur ${user}. "
     sqlite3 ${databasefile} "UPDATE users SET nom = '${nom_mod}', prenom = '${prenom_mod}', courriel = '${courriel_mod}', telephone = '${telephone_mod}' WHERE login = '${user}';"
+}
+
+function write {
+    destuser=$(echo $1 | cut -d'@' -f1)
+    desthost=$(echo $1 | cut -d'@' -f2)
+    mes="${*:2}"
+    for el in $(sqlite3 -column ${databasefile} "SELECT comport FROM activesh WHERE login='${destuser}' AND host='${host}';")
+    do
+	echo -e "Message de ${user}@${host} : \n\n${mes}" | nc localhost ${el}
+    done
 }
 
 if [ ! -f ${databasefile} ]
