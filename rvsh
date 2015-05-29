@@ -91,6 +91,10 @@ function admin {
 		"clear"		) clear;;
 		"afinger"	) afinger $param;;
 		"passwd"	) admin_passwd;;
+		"rhost"		) rhost;;
+		"connect"	) connect $param;;
+		"su"		) connect $host $param;;
+		"who"		) who;;
 		*		) echo "Commande inconnue. " >&2
 	    esac
 	done
@@ -262,6 +266,33 @@ function admin_passwd {
     fi
 }
 
+function who {
+    rep=$(sqlite3 ${databasefile} "SELECT login,login_timestamp FROM authlog WHERE hostname = '${host}' AND logout_timestamp IS NULL ;")
+    out="Utilisateur\tDate de connexion\n"
+    for el in ${rep}
+    do
+	login=$(echo ${el} | cut -d'|' -f1 )
+	timestamp=$(echo ${el} | cut -d'|' -f2 )
+	date=$(date --date="@${timestamp}")
+	out=${out}"${login}\t${date}\n"
+    done
+    echo -e $out | column -t -s $'\t'
+}
+
+function rusers {
+    rep=$(sqlite3 ${databasefile} "SELECT login,hostname,login_timestamp FROM authlog WHERE logout_timestamp IS NULL ;")
+    out="Utilisateur\tPoste\tDate de connexion\n"
+    for el in ${rep}
+    do
+	login=$(echo ${el} | cut -d'|' -f1 )
+	hostname=$(echo ${el} | cut -d'|' -f2 )
+	timestamp=$(echo ${el} | cut -d'|' -f3 )
+	date=$(date --date="@${timestamp}")
+	out=${out}"${login}\t${hostname}\t${date}\n"
+    done
+    echo -e $out | column -t -s $'\t'
+}
+
 function connect {
     host_stack=(${host_stack[@]} $1)
     user_stack=(${user_stack[@]} $2)
@@ -295,9 +326,11 @@ function connect {
 		case "$com" in
 		    "exit"	) echo "Déconnexion";;
 		    "rhost"	) rhost;;
+		    "rusers"	) rusers;;
 		    "passwd"	) users_passwd;;
 		    "connect"	) connect $param;;
 		    "su"	) connect $host $param;;
+		    "who"	) who;;
 		    *		) echo "Commande inconnue. " >&2;;
 		esac
 	    done
