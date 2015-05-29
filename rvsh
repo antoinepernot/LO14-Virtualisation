@@ -57,6 +57,7 @@ databasefile='database.db'
 
 declare -a user_stack
 declare -a host_stack
+declare -a logintime_stack
 
 function error_log {
     echo "Hello"
@@ -264,6 +265,7 @@ function admin_passwd {
 function connect {
     host_stack=(${host_stack[@]} $1)
     user_stack=(${user_stack[@]} $2)
+    logintime_stack=(${logintime_stack[@]} $(date +%s))
     host=$1
     user=$2
     if [[ $(sqlite3 -column ${databasefile} "SELECT * FROM grants WHERE login = '${user}' AND hostname = '${host}';") ]]
@@ -273,6 +275,8 @@ function connect {
 	ctrl=$(sqlite3 ${databasefile} "SELECT passwd FROM users WHERE login = '${user}';")
 	if [[ $hash = $ctrl ]]
 	then
+	    timestamp=${logintime_stack[${#logintime_stack[@]}-1]}
+	    sqlite3 ${databasefile} "INSERT INTO authlog (login,hostname,login_timestamp) VALUES ('${user}','${host}','${timestamp}');"
 	    cmd=''
 	    hist=''
 	    while [[ $cmd != 'exit' ]]
@@ -303,11 +307,17 @@ function connect {
     else
 	echo "Connexion refusée : permission non accordée. " >&2
     fi
+    
+    timestamp=$(date +%s)
+    login_timestamp=${logintime_stack[${#logintime_stack[@]}-1]}
+    sqlite3 ${databasefile} "UPDATE authlog SET logout_timestamp='${timestamp}' WHERE login_timestamp='${login_timestamp}' AND login='${user}' AND hostname='${host}';"
+    
     if [[ ${#host_stack[@]} -gt 1 ]]
     then
     cmd=''
 	unset host_stack[${#host_stack[@]}-1]
 	unset user_stack[${#user_stack[@]}-1]
+	unset logintime_stack[${#logintime_stack[@]}-1]
 	host=${host_stack[${#host_stack[@]}-1]}
 	user=${user_stack[${#user_stack[@]}-1]}
     fi
