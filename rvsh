@@ -457,21 +457,23 @@ function write {
 }
 
 function editor {
-    sqlite3 -column ${databasefile} "SELECT owner FROM files WHERE id='${1}';"
     if [[ ${1} != '' && ${1} != 'editor' ]]
     then
-    	if [[ ${user} = $(sqlite3 -column ${databasefile} "SELECT owner FROM files WHERE id='${1}';") ]]
+        owner=$(sqlite3 -column ${databasefile} "SELECT owner FROM files WHERE id='${1}';" | awk '{ print $1 }')
+    	if [[ ${user} = ${owner} ]]
     	then
-    	    editor_core $1
+            id=$1
+    	    editor_core $id
     	else
     	    echo "Accès refusé. " >&2
     	fi
     else
     	id=$(sqlite3 -column ${databasefile} "SELECT t1.id+1 AS id FROM files t1 LEFT OUTER JOIN files t2 ON (t1.id + 1 = t2.id) WHERE t2.id IS NULL ORDER BY t1.id LIMIT 1;")
-        if [[ ! -e ${id} ]]
+        if [[ ${id} = '' ]]
         then
             id=1
         fi
+        echo $id
     	keywords=$(whiptail --inputbox "Entrez les mots clés associés à ce fichier séparés par un espace : " 8 78 --title "editor - Nouveau fichier" 3>&1 1>&2 2>&3)
     	sqlite3 -column ${databasefile} "INSERT INTO files (id,owner) VALUES ('${id}','${user}');"
     	for el in ${keywords}
@@ -484,21 +486,184 @@ function editor {
 
 function editor_display {
     clear
-
-
-    echo -e "\033[7meditor - Nœud ${id}\033[0m"
+    termsize_lines=$(tput lines)
+    termsize_cols=$(tput cols)
+    termsize_lines=$(($termsize_lines-3))
+    termsize_cols_text=$(($termsize_cols-9))
+    titre=" editor - Nœud ${id}"
+    if [[ ${edited} -eq 1 ]]
+    then
+        titre="${titre}*"
+    fi
+    cpt=${#titre}
+    while [[ ${cpt} -lt ${termsize_cols} ]]
+    do
+        titre="${titre} "
+        cpt=$(($cpt+1))
+    done
+    echo -ne "\033[7m${titre}\033[0m"
+    c=$(((${page}-1)*${termsize_lines}))
+    end=$((${page}*${termsize_lines}))
+    echo ""
+    while [[ $c -lt $end ]]
+    do
+        nbligne=$(($c+1))
+        nblignedisplay=""
+        cpt=${#nbligne}
+        while [[ ${cpt} -lt 7 ]]
+        do
+            nblignedisplay="${nblignedisplay} "
+            cpt=$(($cpt+1))
+        done
+        nblignedisplay="${nblignedisplay}${nbligne} "
+        echo -ne "\033[0;36;44m${nblignedisplay}\033[0m"
+        line=${data[$c]}
+        echo -n ${line:0:termsize_cols_text}
+        if [[ ${#line} -gt ${termsize_cols_text} ]]
+        then
+            echo -ne "\033[0;31m>\033[0m"
+        fi
+        echo ""
+        c=$(($c+1))
+    done
 }
 
 function editor_core {
+    edited=0
+    loop=1
     page=1
     string=$(sqlite3 -column ${databasefile} "SELECT content FROM files WHERE id='${1}';")
-    data=(${string//\n/ })
-    for i in "${!data[@]}"
+    readarray -t data <<< "$string"
+    prompt="Bienvenue sur editor !"
+    ecmd=""
+    while [[ ${loop} -eq 1 ]]
     do
-        echo "$i=>${data[i]}"
+        editor_display
+        echo -e "\033[0;36m${prompt}\033[0m"
+        echo -n ":"
+        read ecmd
+        case "$ecmd" in
+            "q" | "exit"    ) editor_exit;;
+            "s"             ) editor_save;;
+            "l"             ) editor_nextpage;;
+            "j"             ) editor_prevpage;;
+            "m"             ) editor_lastpage;;
+            "h"             ) editor_firstpage;;
+            "e"*            ) editor_editline $ecmd;;
+            "i"*            ) editor_insertline $ecmd;;
+            "d"*            ) editor_delline $ecmd;;
+            *               ) prompt="Commande inconnue. ";;
+        esac
     done
-    echo ${data[@]}
+}
+
+function editor_nextpage {
+    page=$(($page+1))
+}
+
+function editor_lastpage {
+    page=$((${#data[@]}/$termsize_lines+1))
+}
+
+function editor_firstpage {
+    page=1
+}
+
+function editor_prevpage {
+    page=$(($page-1))
+
+    if [[ $page -lt 1 ]]
+    then
+        page=1
+    fi
+}
+
+function editor_insertline {
+    nextline=$((${#data[@]} + 1))
+    linen=$(echo $1 | cut -c2-)
+    if [[ $linen = '' ]]
+    then
+        editor_editline e${nextline}
+    else
+        lineidx=$(($linen-1))
+        editor_display
+        echo -e "\033[0;36mInsertion de la ligne ${linen}. \033[0m"
+        read -e newline
+        dataf=()
+        c=0
+        while [[ $c -lt $lineidx ]]
+        do
+            dataf[$c]=${data[c]}
+            c=$(($c+1))
+        done
+        dataf[$lineidx]=${newline}
+        c=$lineidx
+        while [[ $c -lt ${#data[@]} ]]
+        do
+            cdat=$(($c+1))
+            dataf[$cdat]=${data[c]}
+            c=$(($c+1))
+        done
+        IFS=$'\n' data=(${dataf[@]})
+    fi
+    edited=1
+}
+
+function editor_editline {
+    linen=$(echo $1 | cut -c2-)
+    lineidx=$(($linen-1))
     editor_display
+    echo -e "\033[0;36mÉdition de la ligne ${linen}. \033[0m"
+    read -i "${data[lineidx]}" -e newline
+    data[$lineidx]=${newline}
+    prompt="Ligne ${linen} éditée. "
+    edited=1
+}
+
+function editor_delline {
+    edited=1
+    linen=$(echo $1 | cut -c2-)
+    lineidx=$(($linen-1))
+    unset data[lineidx]
+    IFS=$'\n' data=(${data[@]})
+    prompt="Ligne ${linen} supprimée. "
+}
+
+function editor_save {
+    content=""
+    c=0
+    end=${#data[@]}
+    while [[ $c -lt $end ]]
+    do
+        linesave=${data[$c]}
+        content="${content}${linesave}\n"
+        c=$(($c+1))
+    done
+    echo -e "UPDATE files SET content='${content}' WHERE id='${id}';" | sqlite3 ${databasefile}
+    edited=0
+    prompt="Fichier sauvegardé"
+}
+
+function editor_exit {
+    if [[ $edited -eq 1 ]]
+    then
+        valid=0
+        while [[ $valid -eq 0 ]]
+        do
+            editor_display
+            echo -e "\033[0;36mSouhaitez-vous enregistrer les modifications du fichier (O/N) ? \033[0m"
+            read rep
+            if [[ $rep = "o" || $rep = "O" ]]
+            then
+                editor_save
+                valid=1
+            elif [[ $rep = "n" || $rep = "N" ]]
+            then
+                valid=1
+            fi
+        done
+    fi
+    loop=0
 }
 
 if [ ! -f ${databasefile} ]
