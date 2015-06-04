@@ -85,7 +85,7 @@ function admin {
     	hist=''
     	while [[ $cmd != 'exit' ]]
     	do
-    	    echo -n "rvsh > "
+    	    echo -ne "\033[1;31mrvsh > \033[0m"
     	    read cmd
     	    if [[ $cmd != '!!' ]]
     	    then
@@ -333,7 +333,7 @@ function connect {
     	    hist=''
     	    while [[ $cmd != 'exit' ]]
     	    do
-        		echo -n "${user}@${host} > "
+        		echo -ne "\033[1;36m${user}\033[1;37m@\033[1;33m${host}\033[1;37m > \033[0m"
         		read cmd
         		if [[ $cmd != '!!' ]]
         		then
@@ -346,6 +346,7 @@ function connect {
         		param=`echo ${cmd} | cut -d' ' -f2-`
         		case "$com" in
         		    "exit"	    ) echo "Déconnexion";;
+                    "clear"		) clear;;
         		    "rhost"	    ) rhost;;
         		    "rusers"	) rusers;;
         		    "passwd"	) users_passwd;;
@@ -403,7 +404,7 @@ function users_passwd {
 	    passwd2=$(whiptail --passwordbox "Confirmez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe " 3>&1 1>&2 2>&3)
 	done
 	hash=$(echo -n ${passwd1} | sha512sum | awk '{ print $1 }')
-	sqlite3 ${databasefile} "UPDATE users SET passwd='${hash} WHERE login=${user}';"
+	sqlite3 ${databasefile} "UPDATE users SET passwd='${hash}' WHERE login='${user}';"
 	error_log 5 'passwd' "${user} - Mot de passe modifié avec succès. "
     else
 	error_log 3 'passwd' "${user} - Mot de passe incorrect. "
@@ -516,7 +517,12 @@ function editor_display {
             cpt=$(($cpt+1))
         done
         nblignedisplay="${nblignedisplay}${nbligne} "
-        echo -ne "\033[0;36;44m${nblignedisplay}\033[0m"
+        if [[ " ${matcheslines[*]} " == *" ${c} "* ]]
+        then
+            echo -ne "\033[0;30;41m${nblignedisplay}\033[0m"
+        else
+            echo -ne "\033[0;36;44m${nblignedisplay}\033[0m"
+        fi
         line=${data[$c]}
         echo -n ${line:0:termsize_cols_text}
         if [[ ${#line} -gt ${termsize_cols_text} ]]
@@ -532,6 +538,7 @@ function editor_core {
     edited=0
     loop=1
     page=1
+    matcheslines=()
     string=$(sqlite3 -column ${databasefile} "SELECT content FROM files WHERE id='${1}';")
     readarray -t data <<< "$string"
     prompt="Bienvenue sur editor !"
@@ -543,7 +550,7 @@ function editor_core {
         echo -n ":"
         read ecmd
         case "$ecmd" in
-            "q" | "exit"    ) editor_exit;;
+            "q"* | "exit"*  ) editor_exit $ecmd;;
             "s"             ) editor_save;;
             "l"             ) editor_nextpage;;
             "j"             ) editor_prevpage;;
@@ -552,7 +559,13 @@ function editor_core {
             "e"*            ) editor_editline $ecmd;;
             "i"*            ) editor_insertline $ecmd;;
             "d"*            ) editor_delline $ecmd;;
-            *               ) prompt="Commande inconnue. ";;
+            "x"*            ) editor_moveline $ecmd;;
+            "p"*            ) editor_copyline $ecmd;;
+            "help" | "?"    ) editor_help;;
+            "c"*            ) editor_lowercase $ecmd;;
+            "C"*            ) editor_uppercase $ecmd;;
+            "f"*            ) editor_search $ecmd;;
+            *               ) prompt="Commande inconnue. Tapez 'help' pour afficher les commandes disponibles. ";;
         esac
     done
 }
@@ -586,6 +599,7 @@ function editor_insertline {
         editor_editline e${nextline}
     else
         lineidx=$(($linen-1))
+        editor_autofocus ${lineidx}
         editor_display
         echo -e "\033[0;36mInsertion de la ligne ${linen}. \033[0m"
         read -e newline
@@ -609,6 +623,67 @@ function editor_insertline {
     edited=1
 }
 
+function editor_moveline {
+    linen=$(echo $1 | cut -c2-)
+    linecut=$(echo $linen | cut -d, -f1)
+    linepaste=$(echo $linen | cut -d, -f2)
+    linecut=$(($linecut-1))
+    movedline=${data[linecut]}
+    dataf=()
+    c=0
+    while [[ $c -lt $linepaste ]]
+    do
+        if [[ $c -ne $linecut ]]
+        then
+            dataf[$c]=${data[c]}
+        fi
+        c=$(($c+1))
+    done
+    dataf[$linepaste]=${movedline}
+    c=$linepaste
+    while [[ $c -lt ${#data[@]} ]]
+    do
+        cdat=$(($c+1))
+        if [[ $c -ne $linecut ]]
+        then
+            dataf[$cdat]=${data[c]}
+        fi
+        c=$(($c+1))
+    done
+    IFS=$'\n' data=(${dataf[@]})
+    editor_autofocus ${linepaste}
+    prompt="Ligne $(($linecut+1)) déplacée."
+    edited=1
+}
+
+function editor_copyline {
+    linen=$(echo $1 | cut -c2-)
+    linecopy=$(echo $linen | cut -d, -f1)
+    linepaste=$(echo $linen | cut -d, -f2)
+    linecopy=$(($linecopy-1))
+    linepaste=$(($linepaste-1))
+    copiedline=${data[linecopy]}
+    dataf=()
+    c=0
+    while [[ $c -lt $linepaste ]]
+    do
+        dataf[$c]=${data[c]}
+        c=$(($c+1))
+    done
+    dataf[$linepaste]=${copiedline}
+    c=$linepaste
+    while [[ $c -lt ${#data[@]} ]]
+    do
+        cdat=$(($c+1))
+        dataf[$cdat]=${data[c]}
+        c=$(($c+1))
+    done
+    IFS=$'\n' data=(${dataf[@]})
+    editor_autofocus ${linepaste}
+    prompt="Ligne $(($linecopy+1)) copiée."
+    edited=1
+}
+
 function editor_editline {
     linen=$(echo $1 | cut -c2-)
     lineidx=$(($linen-1))
@@ -616,17 +691,19 @@ function editor_editline {
     echo -e "\033[0;36mÉdition de la ligne ${linen}. \033[0m"
     read -i "${data[lineidx]}" -e newline
     data[$lineidx]=${newline}
+    editor_autofocus ${lineidx}
     prompt="Ligne ${linen} éditée. "
     edited=1
 }
 
 function editor_delline {
-    edited=1
     linen=$(echo $1 | cut -c2-)
     lineidx=$(($linen-1))
     unset data[lineidx]
     IFS=$'\n' data=(${data[@]})
+    editor_autofocus ${lineidx}
     prompt="Ligne ${linen} supprimée. "
+    edited=1
 }
 
 function editor_save {
@@ -664,6 +741,81 @@ function editor_exit {
         done
     fi
     loop=0
+}
+
+function editor_autofocus {
+    page=$((${1}/${termsize_lines}+1))
+}
+
+function editor_uppercase {
+    linen=$(echo $1 | cut -c2-)
+    lineidx=$(($linen-1))
+    data[$lineidx]=${data[lineidx]^^}
+    editor_autofocus ${lineidx}
+    prompt="Casse de la ligne ${linen} modifiée. "
+    edited=1
+}
+
+function editor_lowercase {
+    linen=$(echo $1 | cut -c2-)
+    lineidx=$(($linen-1))
+    data[$lineidx]=${data[lineidx],,}
+    editor_autofocus ${lineidx}
+    prompt="Casse de la ligne ${linen} modifiée. "
+    edited=1
+}
+
+function editor_search {
+    pattern=$(echo $1 | cut -c2-)
+    nbmatch=0
+    matcheslines=()
+    c=0
+    searchprompt="${nbmatch} résultats trouvés. "
+    while [[ $c -lt ${#data[@]} ]]
+    do
+        if [[ ${data[c],,} =~ ${pattern,,} ]]
+        then
+            nbmatch=$((${nbmatch}+1))
+            matcheslines=("${matcheslines[@]}" "${c}")
+        fi
+        c=$((${c}+1))
+    done
+    if [[ ${nbmatch} -gt 0 ]]
+    then
+        scmd=""
+        while [[ ${scmd} != "q" ]]
+        do
+            editor_display
+            echo -e "\033[0;36m${searchprompt}\033[0m"
+            echo -n "f:"
+            read scmd
+            case "$scmd" in
+                "r"*    ) editor_replace $scmd ;;
+                "l"     ) editor_nextpage;;
+                "j"     ) editor_prevpage;;
+                "m"     ) editor_lastpage;;
+                "h"     ) editor_firstpage;;
+                *       ) searchprompt="Commande inconnue";;
+            esac
+        done
+        prompt="Recherche terminée. "
+    else
+        prompt="Aucun résultat trouvé. "
+    fi
+    matcheslines=()
+}
+
+function editor_replace {
+    linen=$(echo $1 | cut -c2- | cut -d, -f1)
+    replace=$(echo $1 | cut -c2- | cut -d, -f2)
+    lineidx=$(($linen-1))
+    data[$lineidx]=$(echo ${data[lineidx]} | sed -e "s/${pattern}/${replace}/g")
+    searchprompt="Ligne ${linen} modifiée. "
+    edited=1
+}
+
+function editor_help {
+    whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Aide pour la commande editor\n\nhelp            : Affiche cette aide.\nl               : Page suivante.\nj               : Page précédente.\nm               : Première page.\nh               : Dernière page.\nc<LINE>         : Passe la ligne LINE en minuscules.\nC<LINE>         : Passe la ligne LINE en majuscules.\nd<LINE>         : Supprimer la ligne LINE.\ne<LINE>         : Éditer la ligne LINE.\ni<LINE>         : Insérer une ligne <LINE> (par défaut : fin de fichier).\np<SRC>,<DST>    : Copie la ligne SRC vers la ligne DST (insertion).\nq               : Quitter.\ns               : Enregistrer le fichier.\nx<SRC>,<DST>    : Déplace la ligne SRC vers la ligne DST. " 22 84 3>&1 1>&2 2>&3
 }
 
 if [ ! -f ${databasefile} ]
