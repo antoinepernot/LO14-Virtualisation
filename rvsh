@@ -355,6 +355,7 @@ function connect {
         		    "who"	    ) who;;
         		    "write"	    ) write $param;;
                     "editor"    ) editor $param;;
+                    "42"        ) easter;;
         		    *		    ) echo "Commande inconnue. " >&2;;
         		esac
     	    done
@@ -455,6 +456,127 @@ function write {
     do
 	echo -e "Message de ${user}@${host} : \n\n${mes}" | nc localhost ${el}
     done
+}
+
+function easter {
+    # Non, ce n'est pas sérieux ...
+    squirrel=()
+    squirrel[0]="         |\\=.   "
+    squirrel[1]="         /  6', "
+    squirrel[2]=" .--.    \\  .-' "
+    squirrel[3]="/_   \\   /  (_()"
+    squirrel[4]="  )   | / \`;--' "
+    squirrel[5]=" /   / /   (    "
+    squirrel[6]="(    \`\"    _)_  "
+    squirrel[7]=" \`-==-'\`\"\"\"\"\"\"\` "
+    phrases=("Le gras, c'est la vie !" "Fort heureusement, l'incident n'a fait aucune victime." "Arthour !… Couhillère !" "Arthour !… Pas changer assiette pour fromage !" "Arthour ! On est fort en pomme." "SALSIFIS !!!!!!" "J'suis chef de guerre moi, j'suis pas là pour agiter des drapeaux et jouer d'la trompette..." "Au gros sel ? Qu'est ce que c'est que ces conneries ? Vous me prenez pour une épaule d'agneau?" "Pour le transport, vaut mieux la brouette !" "Ah le printemps! La nature se réveille, les oiseaux reviennent, on crame des mecs." "J'bouff'rais un ch'val en salade !!!" "Y'a toujours au moins deux solutions à un problème." "Excusez moi Sire, c'est sur le coup du..."
+ "Ou mettre du beurre dans le fond du plat pour pas que le gratin colle." "Y'a des méchants ?" "J'te présente vos hommages au roi Arthur." "Tatan, elle fait des flans." "Elle est où la poulette ?" "La joie de vivre et le jambon, y'a pas trente-six recettes du bonheur !" "Lorsqu'on le tient par la partie sporadique, ou boulière, le fenouil est un objet redondant. " "Ah bah c'est sûr qu'c'est pas Jo l'Rigolo." "Mais qu'est-ce que vous venez me gonfler avec votre père Blaise !" "J’ dis déjà pas merci dans ma langue, alors je vais pas l’apprendre en picte." "JE NE MANGE PAS DE GRAINES !" "Qu'est-ce qui est petit et marron ?" "Mais évidemment c'est sans alcool !" "Attendez, je veux être là quand vous lui mettez une chasse !" "C’est pas faux." "Sire, Sire ! On en a gros !"
+ "C’est marrant les petits bouts de fromage par terre. C’est ça que vous appelez une fondue ?" "Après demain, à partir d'aujourd'hui ?" "C’qui compte, c’est les valeurs !" "Le code c'est \"le code\" ? Ça va, ils se sont pas trop cassés le bonnet, pour l'trouver celui-là !" "Une maquette ?! Vous avez pas dit qu'c'était une catapulte ?" "Qu'est-ce que vous voulez-vous insinuyer Sire ?" "Commencez pas à noyer la peau de l’ours avant d’avoir vendu le poisson." "Bohort il a une femme ! Vous pouvez me la refaire sans trembler des genoux celle-là ?" "Mais je vous empêche pas de faire la guerre, mais vous la ferez guéri !")
+
+    authors=("Karadoc de Vannes" "Bohort de Gaunes" "Le roi burgonde" "Le roi burgonde" "Le roi burgonde" "Le roi burgonde" "Arthur, roi de Bretagne" "Arthur, roi de Bretagne" "Guethenoc" "Arthur, roi de Bretagne" "Arthur, roi de Bretagne" "Élias de Kelliwic’h" "Le Seigneur Jacca" "Kadoc" "Kadoc" "Kadoc" "Kadoc" "Kadoc" "Karadoc de Vannes" "Karadoc de Vannes" "Léodagan de Carmélide" "Léodagan de Carmélide" "Léodagan de Carmélide" "Le maître d'armes" "Merlin" "Merlin" "Merlin" "Perceval le Gallois" "Perceval le Gallois" "Perceval le Gallois" "Perceval le Gallois" "Perceval le Gallois" "Perceval le Gallois" "Perceval le Gallois" "Roparzh" "Roparzh" "Dame Séli" "Dame Ygerne")
+    idx=$[($RANDOM % ($[${#phrases[@]}]))]
+    phrase="« ${phrases[${idx}]} »"
+    author="-- ${authors[${idx}]} --"
+    termsize_cols=$(tput cols)
+    termsize_lines=$(tput lines)
+    marginv=$(( ((${termsize_lines}-14)/2) ))
+    marginphr=$(( (${termsize_cols}-${#phrase})/2 ))
+    marginaut=$(( (${termsize_cols}-${#author})/2 ))
+    phrstr=""
+    autstr=""
+    c=0
+    while [[ $c -lt $marginphr ]]
+    do
+        phrstr="${phrstr} "
+        c=$((${c}+1))
+    done
+    c=0
+    while [[ $c -lt $marginaut ]]
+    do
+        autstr="${autstr} "
+        c=$((${c}+1))
+    done
+    phrstr="${phrstr}${phrase}"
+    autstr="${autstr}${author}"
+    c=0
+    while [[ $c -lt 16 ]]
+    do
+        clear
+        cpt=0
+        while [[ $cpt -lt $marginv ]]
+        do
+            echo ""
+            cpt=$((${cpt}+1))
+        done
+        idx=0
+        while [[ $idx -lt 8 ]]
+        do
+            line="${squirrel[$idx]}"
+            dsp="${line:$((16-$c)):$c}"
+            echo "${dsp}"
+            idx=$(($idx+1))
+        done
+        echo -e "\n\n${phrstr}\n${autstr}"
+        sleep 0.05
+        c=$((${c}+1))
+    done
+    while [[ $c -le $termsize_cols ]]
+    do
+        clear
+        spa=""
+        cpt=0
+        while [[ $cpt -lt $marginv ]]
+        do
+            echo ""
+            cpt=$((${cpt}+1))
+        done
+        cpt=0
+        while [[ $cpt -lt $(($c-16)) ]]
+        do
+            spa="${spa} "
+            cpt=$((${cpt}+1))
+        done
+        idx=0
+        while [[ $idx -lt 8 ]]
+        do
+            line="${squirrel[$idx]}"
+            dsp="${spa}${line}"
+            echo "${dsp}"
+            idx=$(($idx+1))
+        done
+        echo -e "\n\n${phrstr}\n${autstr}"
+        sleep 0.05
+        c=$((${c}+1))
+    done
+    while [[ $c -lt $(($termsize_cols+16)) ]]
+    do
+        clear
+        spa=""
+        cpt=0
+        while [[ $cpt -lt $marginv ]]
+        do
+            echo ""
+            cpt=$((${cpt}+1))
+        done
+        cpt=0
+        while [[ $cpt -lt $(($c-16)) ]]
+        do
+            spa="${spa} "
+            cpt=$((${cpt}+1))
+        done
+        idx=0
+        while [[ $idx -lt 8 ]]
+        do
+            line="${squirrel[$idx]}"
+            dsp="${spa}${line:0:$(($termsize_cols-$c))}"
+            echo "${dsp}"
+            idx=$(($idx+1))
+        done
+        echo -e "\n\n${phrstr}\n${autstr}"
+        sleep 0.05
+        c=$((${c}+1))
+    done
+    clear
 }
 
 function editor {
