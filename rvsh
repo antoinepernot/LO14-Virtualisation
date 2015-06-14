@@ -113,6 +113,8 @@ function admin {
     		"rusers"	) rusers;;
     		"write"		) write $param;;
             "motd"      ) motd $param;;
+            "syslog"    ) syslog;;
+            "42"        ) easter;;
     		*	    	) echo "Commande inconnue. " >&2
     	    esac
     	done
@@ -294,6 +296,37 @@ function motd {
     echo "Message d'accueil modifié. "
 }
 
+function syslog {
+    rep=$(sqlite3 ${databasefile} "SELECT * FROM syslog DESC;")
+    out="No|Poste|Priorité|Date|Programme|Message\n"
+    OLDIFS=$IFS
+    IFS=$'\n'
+    for el in ${rep}
+    do
+    	id=$(echo "${el}" | cut -d'|' -f1 )
+        host=$(echo "${el}" | cut -d'|' -f2 )
+        level=$(echo "${el}" | cut -d'|' -f3 )
+    	timestamp=$(echo "${el}" | cut -d'|' -f4 )
+        program=$(echo "${el}" | cut -d'|' -f5 )
+        msg=$(echo "${el}" | cut -d'|' -f6 )
+        priority=""
+        case "$level" in
+            "0" ) priority="panic" ;;
+            "1" ) priority="alert" ;;
+            "2" ) priority="crit"  ;;
+            "3" ) priority="err"   ;;
+            "4" ) priority="warn"  ;;
+            "5" ) priority="notice";;
+            "6" ) priority="info"  ;;
+            "7" ) priority="debug" ;;
+        esac
+    	date=$(date --date="@${timestamp}" +"%d/%m/%Y %T")
+    	out=${out}"${id}|${host}|${priority}|${date}|${program}|${msg}\n"
+    done
+    IFS=${OLDIFS}
+    echo -e $out | column -t -s '|'
+}
+
 function who {
     rep=$(sqlite3 ${databasefile} "SELECT login,login_timestamp FROM authlog WHERE hostname = '${host}' AND logout_timestamp IS NULL ;")
     out="Utilisateur\tDate de connexion\n"
@@ -372,6 +405,7 @@ function connect {
                     "rm"        ) searchfile "rm";;
                     "cp"        ) searchfile "cp";;
                     "chkey"     ) searchfile "chkey";;
+                    "finger"    ) finger;;
                     "42"        ) easter;;
         		    *		    ) echo "Commande inconnue. " >&2;;
         		esac
@@ -407,6 +441,19 @@ function user_help {
 
 function rhost {
 	sqlite3 ${databasefile} "SELECT hostname FROM hosts;"
+}
+
+function finger {
+    infos=$(sqlite3 ${databasefile} "SELECT nom,prenom,courriel,telephone FROM users WHERE login='${user}';")
+    nom=$(echo ${infos} | cut -d'|' -f1)
+    prenom=$(echo ${infos} | cut -d'|' -f2)
+    courriel=$(echo ${infos} | cut -d'|' -f3)
+    telephone=$(echo ${infos} | cut -d'|' -f4)
+    echo "Informations personnelles : "
+    echo -e "Nom : \t\t ${nom}"
+    echo -e "Prenom : \t ${prenom}"
+    echo -e "Courriel : \t ${courriel}"
+    echo -e "Telephone : \t ${telephone}"
 }
 
 function users_passwd {
@@ -1025,7 +1072,7 @@ function editor_replace {
 }
 
 function editor_help {
-    whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Aide pour la commande editor\n\nhelp            : Affiche cette aide.\nl               : Page suivante.\nj               : Page précédente.\nm               : Première page.\nh               : Dernière page.\nc<LINE>         : Passe la ligne LINE en minuscules.\nC<LINE>         : Passe la ligne LINE en majuscules.\nd<LINE>         : Supprimer la ligne LINE.\ne<LINE>         : Éditer la ligne LINE.\ni<LINE>         : Insérer une ligne <LINE> (par défaut : fin de fichier).\np<SRC>,<DST>    : Copie la ligne SRC vers la ligne DST (insertion).\nq               : Quitter.\ns               : Enregistrer le fichier.\nx<SRC>,<DST>    : Déplace la ligne SRC vers la ligne DST. " 22 84 3>&1 1>&2 2>&3
+    whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Aide pour la commande editor\n\nhelp            : Affiche cette aide.\nl               : Page suivante.\nj               : Page précédente.\nm               : Première page.\nh               : Dernière page.\nc<LINE>         : Passe la ligne LINE en minuscules.\nC<LINE>         : Passe la ligne LINE en majuscules.\nd<LINE>         : Supprimer la ligne LINE.\ne<LINE>         : Éditer la ligne LINE.\nf<TEXT>         : Recherche dans le document TEXT.\ni<LINE>         : Insérer une ligne <LINE> (par défaut : fin de fichier).\np<SRC>,<DST>    : Copie la ligne SRC vers la ligne DST (insertion).\nq               : Quitter.\ns               : Enregistrer le fichier.\nx<SRC>,<DST>    : Déplace la ligne SRC vers la ligne DST. " 23 84 3>&1 1>&2 2>&3
 }
 
 if [ ! -f ${databasefile} ]
