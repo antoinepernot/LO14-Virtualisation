@@ -226,7 +226,16 @@ function delete_user {
 
 
 function list_user {
-    sqlite3 ${databasefile} "SELECT login,nom,prenom FROM users;"
+    dat="Identifiant|Nom|Prénom\n"
+    out=$(sqlite3 ${databasefile} "SELECT login,nom,prenom FROM users;")
+    for el in ${out}
+    do
+    	login=$(echo ${el} | cut -d'|' -f1 )
+    	nom=$(echo ${el} | cut -d'|' -f2 )
+    	prenom=$(echo ${el} | cut -d'|' -f3 )
+    	dat=${dat}"${login}|${nom}|${prenom}\n"
+    done
+    echo -e $dat | column -t -s '|'
 }
 
 function grant_user {
@@ -512,7 +521,7 @@ function afinger {
         prenom_mod=$(whiptail --inputbox "Entrez le prénom de l'utilisateur : " 8 78 $prenom --title "rvsh - Modifier un compte utilisateur" 3>&1 1>&2 2>&3)
         courriel=$(echo $dat | awk '{ print $5 }')
         courriel_mod=$(whiptail --inputbox "Entrez le courriel de l'utilisateur : " 8 78 $courriel --title "rvsh - Modifier un compte utilisateur" 3>&1 1>&2 2>&3)
-        telephone=$(echo $dat | awk '{ print $5 }')
+        telephone=$(echo $dat | awk '{ print $6 }')
         telephone_mod=$(whiptail --inputbox "Entrez le numéro de téléphone de l'utilisateur : " 8 78 $telephone --title "rvsh - Modifier un compte utilisateur" 3>&1 1>&2 2>&3)
         echo "Modification de l'utilisateur ${user}. "
         sqlite3 ${databasefile} "UPDATE users SET nom = '${nom_mod}', prenom = '${prenom_mod}', courriel = '${courriel_mod}', telephone = '${telephone_mod}' WHERE login = '${user}';"
