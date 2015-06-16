@@ -136,6 +136,7 @@ function create_database {
     sqlite3 ${databasefile} "CREATE TABLE authlog (id INTEGER PRIMARY KEY AUTOINCREMENT, login TEXT, hostname TEXT, login_timestamp INTEGER, logout_timestamp INTEGER, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(hostname) REFERENCES hosts(hostname));"
     sqlite3 ${databasefile} "CREATE TABLE syslog (id INTEGER PRIMARY KEY AUTOINCREMENT, host TEXT, level INTEGER, datetime INTEGER, program TEXT, msg TEXT, FOREIGN KEY(host) REFERENCES hosts(hostname));"
     sqlite3 ${databasefile} "CREATE TABLE activesh (id INTEGER PRIMARY KEY AUTOINCREMENT, pid INTEGER, login TEXT, host TEXT, logintime INTEGER, comport INTEGER, compid INTEGER, FOREIGN KEY(login) REFERENCES users(login), FOREIGN KEY(host) REFERENCES hosts(hostname));"
+    sqlite3 ${databasefile} "CREATE TABLE writespool (loginexp TEXT, logindest TEXT, hostexp TEXT, hostdest TEXT, msg TEXT, FOREIGN KEY(loginexp) REFERENCES users(login), FOREIGN KEY(logindest) REFERENCES users(login), FOREIGN KEY(hostexp) REFERENCES hosts(hostname), FOREIGN KEY(hostdest) REFERENCES hosts(hostname));"
 
     # Définition du mot de passe d'administration. Ici, le mot de passe par défaut est 'AdaLovelace'.
     sqlite3 ${databasefile} "INSERT INTO config (key, value) VALUES ('admin_passwd','c6fad173ccc1d73c9b416a51295e1cc322fbc4141d5f5658e1148e6be18b53d1b434420ba2df7980aa3bf37c7b2339f46af07e30ad814c282c617175f5b98abd');"
@@ -282,16 +283,20 @@ function admin_passwd {
     ctrl=$(sqlite3 ${databasefile} "SELECT value FROM config WHERE key = 'admin_passwd';")
     if [[ $hash = $ctrl ]]
     then
-    	passwd1=''
-    	while [[ $passwd1 = '' ]]
-    	do
-    	    passwd1=$(whiptail --passwordbox "Entrez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe administrateur" 3>&1 1>&2 2>&3)
-    	done
-    	passwd2=''
-    	while [[ $passwd2 = '' ]]
-    	do
-    	    passwd2=$(whiptail --passwordbox "Confirmez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe administrateur" 3>&1 1>&2 2>&3)
-    	done
+    	passwd1='a'
+        passwd2='b'
+        while [[ $passwd1 != $passwd2 ]]
+        do
+        	while [[ $passwd1 = '' ]]
+        	do
+        	    passwd1=$(whiptail --passwordbox "Entrez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe administrateur" 3>&1 1>&2 2>&3)
+        	done
+
+        	while [[ $passwd2 = '' ]]
+        	do
+        	    passwd2=$(whiptail --passwordbox "Confirmez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe administrateur" 3>&1 1>&2 2>&3)
+        	done
+        done
     	hash=$(echo -n ${passwd1} | sha512sum | awk '{ print $1 }')
     	sqlite3 ${databasefile} "UPDATE config SET value='${hash}' WHERE key = 'admin_passwd';"
     	error_log 5 'admin-passwd' "Mot de passe modifié avec succès. "
@@ -364,11 +369,17 @@ function rusers {
 }
 
 function connect {
-    host_stack=(${host_stack[@]} $1)
-    user_stack=(${user_stack[@]} $2)
+    conhost=$1
+    conuser=$2
+    if [[ ${conuser} == '' ]]
+    then
+        conuser=${user}
+    fi
+    host_stack=(${host_stack[@]} ${conhost})
+    user_stack=(${user_stack[@]} ${conuser})
     logintime_stack=(${logintime_stack[@]} $(date +%s))
-    host=$1
-    user=$2
+    host=${conhost}
+    user=${conuser}
     nc -dkl -p $((10000 + ${#host_stack[@]} + $$)) &
     sqlite3 ${databasefile} "INSERT INTO activesh (pid,login,host,logintime,compid,comport) VALUES ('$$','${user}','${host}','$(date +%s)','$!','$((10000 + ${#host_stack[@]} + $$))');"
     compid_stack=(${compid_stack[@]} $!)
@@ -384,40 +395,58 @@ function connect {
     	    cmd=''
     	    hist=''
             motd=$(sqlite3 ${databasefile} "SELECT value FROM config WHERE key = 'motd';")
+            OLDIFS=${IFS}
+            IFS=$'\n'
+            for el in $(sqlite3 -column ${databasefile} "SELECT * FROM writespool WHERE logindest='${user}' AND hostdest='${host}';")
+            do
+        	       srcuser=$(echo ${el} | awk '{ print $1 }')
+                   srchost=$(echo ${el} | awk '{ print $2 }')
+                   msg=$(echo ${el} | awk '{ print $5 }')
+                   echo -e "\nMessage de ${srcuser}@${srchost} : \n\n${mes}"
+            done
+            sqlite3 -column ${databasefile} "DELETE FROM writespool WHERE logindest='${user}' AND hostdest='${host}';"
+            IFS=${OLDIFS}
             echo -e "${motd}"
     	    while [[ $cmd != 'exit' ]]
     	    do
-        		echo -ne "\033[1;36m${user}\033[1;37m@\033[1;33m${host}\033[1;37m > \033[0m"
-        		read cmd
-        		if [[ $cmd != '!!' ]]
-        		then
-        		    hist=${cmd}
-        		else
-        		    cmd=${hist}
-        		    echo $cmd
-        		fi
-        		com=`echo ${cmd} | cut -d' ' -f1`
-        		param=`echo ${cmd} | cut -d' ' -f2-`
-        		case "$com" in
-        		    "exit"	    ) echo "Déconnexion";;
-                    "help"      ) user_help;;
-                    "clear"		) clear;;
-        		    "rhost"	    ) rhost;;
-        		    "rusers"	) rusers;;
-        		    "passwd"	) users_passwd;;
-        		    "connect"	) connect $param;;
-        		    "su"	    ) connect $host $param;;
-        		    "who"	    ) who;;
-        		    "write"	    ) write $param;;
-                    "editor"    ) editor $param;;
-                    "open"      ) searchfile "open";;
-                    "rm"        ) searchfile "rm";;
-                    "cp"        ) searchfile "cp";;
-                    "chkey"     ) searchfile "chkey";;
-                    "finger"    ) finger;;
-                    "42"        ) easter;;
-        		    *		    ) echo "Commande inconnue. " >&2;;
-        		esac
+                echo -ne "\033[1;36m${user}\033[1;37m@\033[1;33m${host}\033[1;37m > \033[0m"
+                read cmd
+                if [[ $(sqlite3 -column ${databasefile} "SELECT * FROM grants WHERE login = '${user}' AND hostname = '${host}';") ]]
+                then
+            		if [[ $cmd != '!!' ]]
+            		then
+            		    hist=${cmd}
+            		else
+            		    cmd=${hist}
+            		    echo $cmd
+            		fi
+            		com=`echo ${cmd} | cut -d' ' -f1`
+            		param=`echo ${cmd} | cut -d' ' -f2-`
+            		case "$com" in
+            		    "exit"	    ) echo "Déconnexion";;
+                        "help"      ) user_help;;
+                        "clear"		) clear;;
+            		    "rhost"	    ) rhost;;
+            		    "rusers"	) rusers;;
+            		    "passwd"	) users_passwd;;
+            		    "connect"	) connect $param;;
+            		    "su"	    ) connect $host $param;;
+            		    "who"	    ) who;;
+            		    "write"	    ) write $param;;
+                        "editor"    ) editor $param;;
+                        "open"      ) searchfile "open";;
+                        "rm"        ) searchfile "rm";;
+                        "cp"        ) searchfile "cp";;
+                        "chkey"     ) searchfile "chkey";;
+                        "finger"    ) finger;;
+                        "42"        ) easter;;
+            		    *		    ) echo "Commande inconnue. " >&2;;
+            		esac
+                else
+                    error_log 3 'connect' "${user}@${host} - Connexion refusée : permission non accordée. "
+                    echo "Déconnexion"
+                    cmd="exit"
+                fi
     	    done
     	else
     	    error_log 3 'connect' "${user}@${host} - Connexion refusée : mot de passe incorrect. "
@@ -471,16 +500,19 @@ function users_passwd {
     ctrl=$(sqlite3 ${databasefile} "SELECT passwd FROM users WHERE login='${user}';")
     if [[ $hash = $ctrl ]]
     then
-    	passwd1=''
-    	while [[ $passwd1 = '' ]]
-    	do
-    	    passwd1=$(whiptail --passwordbox "Entrez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe " 3>&1 1>&2 2>&3)
-    	done
-    	passwd2=''
-    	while [[ $passwd2 = '' ]]
-    	do
-    	    passwd2=$(whiptail --passwordbox "Confirmez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe " 3>&1 1>&2 2>&3)
-    	done
+    	passwd1='a'
+        passwd2='b'
+        while [[ $passwd1 != $passwd2 ]]
+        do
+        	while [[ $passwd1 = '' ]]
+        	do
+        	    passwd1=$(whiptail --passwordbox "Entrez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe " 3>&1 1>&2 2>&3)
+        	done
+        	while [[ $passwd2 = '' ]]
+        	do
+        	    passwd2=$(whiptail --passwordbox "Confirmez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe " 3>&1 1>&2 2>&3)
+        	done
+        done
     	hash=$(echo -n ${passwd1} | sha512sum | awk '{ print $1 }')
     	sqlite3 ${databasefile} "UPDATE users SET passwd='${hash}' WHERE login='${user}';"
     	error_log 5 'passwd' "${user} - Mot de passe modifié avec succès. "
@@ -529,134 +561,25 @@ function afinger {
 }
 
 function write {
-    destuser=$(echo $1 | cut -d'@' -f1)
-    desthost=$(echo $1 | cut -d'@' -f2)
-    mes="${*:2}"
-    for el in $(sqlite3 -column ${databasefile} "SELECT comport FROM activesh WHERE login='${destuser}' AND host='${host}';")
-    do
-	echo -e "Message de ${user}@${host} : \n\n${mes}" | nc localhost ${el}
-    done
-}
-
-function easter {
-    # Non, ce n'est pas sérieux ...
-    squirrel=()
-    squirrel[0]="         |\\=.   "
-    squirrel[1]="         /  6', "
-    squirrel[2]=" .--.    \\  .-' "
-    squirrel[3]="/_   \\   /  (_()"
-    squirrel[4]="  )   | / \`;--' "
-    squirrel[5]=" /   / /   (    "
-    squirrel[6]="(    \`\"    _)_  "
-    squirrel[7]=" \`-==-'\`\"\"\"\"\"\"\` "
-    phrases=("Le gras, c'est la vie !" "Fort heureusement, l'incident n'a fait aucune victime." "Arthour !… Couhillère !" "Arthour !… Pas changer assiette pour fromage !" "Arthour ! On est fort en pomme." "SALSIFIS !!!!!!" "J'suis chef de guerre moi, j'suis pas là pour agiter des drapeaux et jouer d'la trompette..." "Au gros sel ? Qu'est ce que c'est que ces conneries ? Vous me prenez pour une épaule d'agneau?" "Pour le transport, vaut mieux la brouette !" "Ah le printemps! La nature se réveille, les oiseaux reviennent, on crame des mecs." "J'bouff'rais un ch'val en salade !!!" "Y'a toujours au moins deux solutions à un problème." "Excusez moi Sire, c'est sur le coup du..."
-    "Ou mettre du beurre dans le fond du plat pour pas que le gratin colle." "Y'a des méchants ?" "J'te présente vos hommages au roi Arthur." "Tatan, elle fait des flans." "Elle est où la poulette ?" "La joie de vivre et le jambon, y'a pas trente-six recettes du bonheur !" "Lorsqu'on le tient par la partie sporadique, ou boulière, le fenouil est un objet redondant. " "Ah bah c'est sûr qu'c'est pas Jo l'Rigolo." "Mais qu'est-ce que vous venez me gonfler avec votre père Blaise !" "J’ dis déjà pas merci dans ma langue, alors je vais pas l’apprendre en picte." "JE NE MANGE PAS DE GRAINES !" "Qu'est-ce qui est petit et marron ?" "Mais évidemment c'est sans alcool !" "Attendez, je veux être là quand vous lui mettez une chasse !" "C’est pas faux." "Sire, Sire ! On en a gros !"
-    "C’est marrant les petits bouts de fromage par terre. C’est ça que vous appelez une fondue ?" "Après demain, à partir d'aujourd'hui ?" "C’qui compte, c’est les valeurs !" "Le code c'est \"le code\" ? Ça va, ils se sont pas trop cassés le bonnet, pour l'trouver celui-là !" "Une maquette ?! Vous avez pas dit qu'c'était une catapulte ?" "Qu'est-ce que vous voulez-vous insinuyer Sire ?" "Commencez pas à noyer la peau de l’ours avant d’avoir vendu le poisson." "Bohort il a une femme ! Vous pouvez me la refaire sans trembler des genoux celle-là ?" "Mais je vous empêche pas de faire la guerre, mais vous la ferez guéri !")
-
-    authors=("Karadoc de Vannes" "Bohort de Gaunes" "Le roi burgonde" "Le roi burgonde" "Le roi burgonde" "Le roi burgonde" "Arthur, roi de Bretagne" "Arthur, roi de Bretagne" "Guethenoc" "Arthur, roi de Bretagne" "Arthur, roi de Bretagne" "Élias de Kelliwic’h" "Le Seigneur Jacca" "Kadoc" "Kadoc" "Kadoc" "Kadoc" "Kadoc" "Karadoc de Vannes" "Karadoc de Vannes" "Léodagan de Carmélide" "Léodagan de Carmélide" "Léodagan de Carmélide" "Le maître d'armes" "Merlin" "Merlin" "Merlin" "Perceval le Gallois" "Perceval le Gallois" "Perceval le Gallois" "Perceval le Gallois" "Perceval le Gallois" "Perceval le Gallois" "Perceval le Gallois" "Roparzh" "Roparzh" "Dame Séli" "Dame Ygerne")
-    idx=$[($RANDOM % ($[${#phrases[@]}]))]
-    phrase="« ${phrases[${idx}]} »"
-    author="-- ${authors[${idx}]} --"
-    termsize_cols=$(tput cols)
-    termsize_lines=$(tput lines)
-    marginv=$(( ((${termsize_lines}-14)/2) ))
-    marginphr=$(( (${termsize_cols}-${#phrase})/2 ))
-    marginaut=$(( (${termsize_cols}-${#author})/2 ))
-    phrstr=""
-    autstr=""
-    c=0
-    while [[ $c -lt $marginphr ]]
-    do
-        phrstr="${phrstr} "
-        c=$((${c}+1))
-    done
-    c=0
-    while [[ $c -lt $marginaut ]]
-    do
-        autstr="${autstr} "
-        c=$((${c}+1))
-    done
-    phrstr="${phrstr}${phrase}"
-    autstr="${autstr}${author}"
-    c=0
-    while [[ $c -lt 16 ]]
-    do
-        clear
-        cpt=0
-        while [[ $cpt -lt $marginv ]]
-        do
-            echo ""
-            cpt=$((${cpt}+1))
-        done
-        idx=0
-        while [[ $idx -lt 8 ]]
-        do
-            line="${squirrel[$idx]}"
-            dsp="${line:$((16-$c)):$c}"
-            echo "${dsp}"
-            idx=$(($idx+1))
-        done
-        echo -e "\n\n${phrstr}\n${autstr}"
-        sleep 0.05
-        c=$((${c}+1))
-    done
-    while [[ $c -le $termsize_cols ]]
-    do
-        clear
-        spa=""
-        cpt=0
-        while [[ $cpt -lt $marginv ]]
-        do
-            echo ""
-            cpt=$((${cpt}+1))
-        done
-        cpt=0
-        while [[ $cpt -lt $(($c-16)) ]]
-        do
-            spa="${spa} "
-            cpt=$((${cpt}+1))
-        done
-        idx=0
-        while [[ $idx -lt 8 ]]
-        do
-            line="${squirrel[$idx]}"
-            dsp="${spa}${line}"
-            echo "${dsp}"
-            idx=$(($idx+1))
-        done
-        echo -e "\n\n${phrstr}\n${autstr}"
-        sleep 0.05
-        c=$((${c}+1))
-    done
-    while [[ $c -lt $(($termsize_cols+16)) ]]
-    do
-        clear
-        spa=""
-        cpt=0
-        while [[ $cpt -lt $marginv ]]
-        do
-            echo ""
-            cpt=$((${cpt}+1))
-        done
-        cpt=0
-        while [[ $cpt -lt $(($c-16)) ]]
-        do
-            spa="${spa} "
-            cpt=$((${cpt}+1))
-        done
-        idx=0
-        while [[ $idx -lt 8 ]]
-        do
-            line="${squirrel[$idx]}"
-            dsp="${spa}${line:0:$(($termsize_cols-$c))}"
-            echo "${dsp}"
-            idx=$(($idx+1))
-        done
-        echo -e "\n\n${phrstr}\n${autstr}"
-        sleep 0.05
-        c=$((${c}+1))
-    done
-    clear
+    if [[  $1 != '' ]]
+    then
+        destuser=$(echo $1 | cut -d'@' -f1)
+        desthost=$(echo $1 | cut -d'@' -f2)
+        mes="${*:2}"
+        count=$(sqlite3 -column ${databasefile} "SELECT COUNT(comport) FROM activesh WHERE login='${destuser}' AND host='${host}';")
+        if [[ $count -gt 0 ]]
+        then
+            for el in $(sqlite3 -column ${databasefile} "SELECT comport FROM activesh WHERE login='${destuser}' AND host='${host}';")
+            do
+        	       echo -e "\nMessage de ${user}@${host} : \n\n${mes}" | nc localhost ${el}
+            done
+        else
+            echo "L'utilisateur spécifié n'est pas connecté sur le poste demandé. Le message lui sera délivré à la prochaine connexion. "
+            sqlite3 ${databasefile} "INSERT INTO writespool (loginexp,hostexp,logindest,hostdest,msg) VALUES ('${user}','${host}','${destuser}','${desthost}','${mes}')"
+        fi
+    else
+        echo "Syntaxe de write : write utilisateur@hote message"
+    fi
 }
 
 function searchfile {
