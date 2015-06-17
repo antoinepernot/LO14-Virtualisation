@@ -568,10 +568,10 @@ function write {
         destuser=$(echo $1 | cut -d'@' -f1)
         desthost=$(echo $1 | cut -d'@' -f2)
         mes="${*:2}"
-        count=$(sqlite3 -column ${databasefile} "SELECT COUNT(comport) FROM activesh WHERE login='${destuser}' AND host='${host}';")
+        count=$(sqlite3 -column ${databasefile} "SELECT COUNT(comport) FROM activesh WHERE login='${destuser}' AND host='${desthost}';")
         if [[ $count -gt 0 ]]
         then
-            for el in $(sqlite3 -column ${databasefile} "SELECT comport FROM activesh WHERE login='${destuser}' AND host='${host}';")
+            for el in $(sqlite3 -column ${databasefile} "SELECT comport FROM activesh WHERE login='${destuser}' AND host='${desthost}';")
             do
         	       echo -e "\nMessage de ${user}@${host} : \n\n${mes}" | nc localhost ${el}
             done
