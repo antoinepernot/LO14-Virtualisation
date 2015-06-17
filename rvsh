@@ -114,7 +114,6 @@ function admin {
     		"write"		) write $param;;
             "motd"      ) motd $param;;
             "syslog"    ) syslog;;
-            "42"        ) easter;;
     		*	    	) echo "Commande inconnue. " >&2
     	    esac
     	done
@@ -287,6 +286,8 @@ function admin_passwd {
         passwd2='b'
         while [[ $passwd1 != $passwd2 ]]
         do
+            passwd1=''
+            passwd2=''
         	while [[ $passwd1 = '' ]]
         	do
         	    passwd1=$(whiptail --passwordbox "Entrez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe administrateur" 3>&1 1>&2 2>&3)
@@ -439,7 +440,6 @@ function connect {
                         "cp"        ) searchfile "cp";;
                         "chkey"     ) searchfile "chkey";;
                         "finger"    ) finger;;
-                        "42"        ) easter;;
             		    *		    ) echo "Commande inconnue. " >&2;;
             		esac
                 else
@@ -504,6 +504,8 @@ function users_passwd {
         passwd2='b'
         while [[ $passwd1 != $passwd2 ]]
         do
+            passwd1=''
+            passwd2=''
         	while [[ $passwd1 = '' ]]
         	do
         	    passwd1=$(whiptail --passwordbox "Entrez le nouveau mot de passe : " 8 78 --title "rvsh - Modification du mot de passe " 3>&1 1>&2 2>&3)
