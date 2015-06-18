@@ -114,6 +114,7 @@ function admin {
     		"write"		) write $param;;
             "motd"      ) motd $param;;
             "syslog"    ) syslog;;
+            "authlog"   ) authlog;;
     		*	    	) echo "Commande inconnue. " >&2
     	    esac
     	done
@@ -337,6 +338,26 @@ function syslog {
         esac
     	date=$(date --date="@${timestamp}" +"%d/%m/%Y %T")
     	out=${out}"${id}|${host}|${priority}|${date}|${program}|${msg}\n"
+    done
+    IFS=${OLDIFS}
+    echo -e $out | column -t -s '|'
+}
+
+function authlog {
+    rep=$(sqlite3 ${databasefile} "SELECT * FROM authlog DESC;")
+    out="No|Identifiant|Poste|Connexion|Déconnexion\n"
+    OLDIFS=$IFS
+    IFS=$'\n'
+    for el in ${rep}
+    do
+    	id=$(echo "${el}" | cut -d'|' -f1 )
+        login=$(echo "${el}" | cut -d'|' -f2 )
+        hostname=$(echo "${el}" | cut -d'|' -f3 )
+    	login_timestamp=$(echo "${el}" | cut -d'|' -f4 )
+        logout_timestamp=$(echo "${el}" | cut -d'|' -f5 )
+    	login_date=$(date --date="@${login_timestamp}" +"%d/%m/%Y %T")
+        logout_date=$(date --date="@${logout_timestamp}" +"%d/%m/%Y %T")
+    	out=${out}"${id}|${login}|${hostname}|${login_date}|${logout_date}\n"
     done
     IFS=${OLDIFS}
     echo -e $out | column -t -s '|'
