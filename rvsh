@@ -124,7 +124,7 @@ function admin {
 }
 
 function admin_help {
-    whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Commandes disponibles au mode admin\n\nafinger : Renseigne les informations complémentaires sur l'utilisateur.\nclear   : Effacer le terminal.\nconnect : Connexion à une machine virtuelle.\nexit    : Fermer la session courante.\nhelp    : Affiche cette aide.\nhost    : Gestion des postes du réseau.\nmotd    : Modifie le message d'accueil. \npasswd  : Modifier son mot de passe.\nrhost   : Liste les postes du réseau.\nrusers  : Liste les utilisateurs du réseau.\nsu      : Changer d'utilisateur.\nusers   : Gestion des utilisateurs du réseau.\nwho     : Liste les utilisateurs connectés.\nwrite   : Envoyer un message à un utilisateur." 22 84 3>&1 1>&2 2>&3
+    whiptail --title "rvsh - Aide" --ok-button "Fermer" --msgbox "Commandes disponibles au mode admin\n\nafinger : Renseigne les informations complémentaires sur l'utilisateur.\nauthlog : Affiche le journal d'authentification.\nclear   : Effacer le terminal.\nconnect : Connexion à une machine virtuelle.\nexit    : Fermer la session courante.\nhelp    : Affiche cette aide.\nhost    : Gestion des postes du réseau.\nmotd    : Modifie le message d'accueil. \npasswd  : Modifier son mot de passe.\nrhost   : Liste les postes du réseau.\nrusers  : Liste les utilisateurs du réseau.\nsu      : Changer d'utilisateur.\nsyslog  : Afficher le journal des événements.\nusers   : Gestion des utilisateurs du réseau.\nwho     : Liste les utilisateurs connectés.\nwrite   : Envoyer un message à un utilisateur." 24 84 3>&1 1>&2 2>&3
 }
 
 function create_database {
