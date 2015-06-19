@@ -421,10 +421,10 @@ function connect {
             IFS=$'\n'
             for el in $(sqlite3 -column ${databasefile} "SELECT * FROM writespool WHERE logindest='${user}' AND hostdest='${host}';")
             do
-        	       srcuser=$(echo ${el} | awk '{ print $1 }')
+                   srcuser=$(echo ${el} | awk '{ print $1 }')
                    srchost=$(echo ${el} | awk '{ print $2 }')
                    msg=$(echo ${el} | awk '{ print $5 }')
-                   echo -e "\nMessage de ${srcuser}@${srchost} : \n\n${mes}"
+                   echo -e "\nMessage de ${srcuser}@${srchost} : \n\n${msg}"
             done
             sqlite3 -column ${databasefile} "DELETE FROM writespool WHERE logindest='${user}' AND hostdest='${host}';"
             IFS=${OLDIFS}
